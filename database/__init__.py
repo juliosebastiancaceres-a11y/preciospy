@@ -1,8 +1,13 @@
+import os
 import sqlite3
 from pathlib import Path
 
+from dotenv import load_dotenv
+from supabase import create_client
+
 
 RUTA_DB = Path(__file__).resolve().parent.parent / "data" / "preciospy.db"
+RUTA_ENV = Path(__file__).resolve().parent.parent / ".env"
 
 
 def inicializar_db():
@@ -73,3 +78,40 @@ def guardar_productos(productos):
         conexion.commit()
 
     print(f"Productos guardados: {productos_guardados}")
+
+
+def inicializar_supabase():
+    """Crea y retorna el cliente de Supabase usando variables del archivo .env."""
+    load_dotenv(RUTA_ENV)
+
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+
+    if not url or not key:
+        raise ValueError("Faltan SUPABASE_URL o SUPABASE_KEY en el archivo .env")
+
+    return create_client(url, key)
+
+
+def guardar_en_supabase(productos):
+    """Guarda productos nuevos en la tabla precios de Supabase."""
+    supabase = inicializar_supabase()
+    productos_guardados = 0
+
+    for producto in productos:
+        # Verifica si el producto ya existe para esa fecha antes de insertarlo.
+        respuesta = (
+            supabase.table("precios")
+            .select("id")
+            .eq("nombre_producto", producto["nombre_producto"])
+            .eq("fecha_registro", producto["fecha_registro"])
+            .execute()
+        )
+
+        if respuesta.data:
+            continue
+
+        supabase.table("precios").insert(producto).execute()
+        productos_guardados += 1
+
+    print(f"Productos guardados en Supabase: {productos_guardados}")
