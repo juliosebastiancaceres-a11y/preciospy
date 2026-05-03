@@ -27,28 +27,49 @@ def inicializar_db():
 
 
 def guardar_productos(productos):
-    """Guarda una lista de productos en la tabla de precios."""
+    """Guarda productos nuevos en la tabla de precios."""
+    productos_guardados = 0
+
     with sqlite3.connect(RUTA_DB) as conexion:
         cursor = conexion.cursor()
-        cursor.executemany(
-            """
-            INSERT INTO precios (
-                supermercado,
-                nombre_producto,
-                precio,
-                unidad,
-                fecha_registro
+
+        for producto in productos:
+            # Verifica si el producto ya fue registrado para ese supermercado y fecha.
+            cursor.execute(
+                """
+                SELECT id
+                FROM precios
+                WHERE nombre_producto = :nombre_producto
+                  AND supermercado = :supermercado
+                  AND fecha_registro = :fecha_registro
+                """,
+                producto,
             )
-            VALUES (
-                :supermercado,
-                :nombre_producto,
-                :precio,
-                :unidad,
-                :fecha_registro
+
+            if cursor.fetchone():
+                continue
+
+            cursor.execute(
+                """
+                INSERT INTO precios (
+                    supermercado,
+                    nombre_producto,
+                    precio,
+                    unidad,
+                    fecha_registro
+                )
+                VALUES (
+                    :supermercado,
+                    :nombre_producto,
+                    :precio,
+                    :unidad,
+                    :fecha_registro
+                )
+                """,
+                producto,
             )
-            """,
-            productos,
-        )
+            productos_guardados += 1
+
         conexion.commit()
 
-    print(f"Productos guardados: {len(productos)}")
+    print(f"Productos guardados: {productos_guardados}")
