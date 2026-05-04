@@ -7,16 +7,23 @@ from bs4 import BeautifulSoup
 
 URL_SUPERSEIS = "https://www.superseis.com.py/"
 CATEGORIAS_SUPERSEIS = [
-    ("https://www.superseis.com.py/catalog/almacen/arroces", "Almacén - Arroces"),
-    ("https://www.superseis.com.py/catalog/almacen/aceites", "Almacén - Aceites"),
-    (
-        "https://www.superseis.com.py/catalog/almacen/azucar-y-endulzantes",
-        "Almacén - Azúcar",
-    ),
+    ("https://www.superseis.com.py/catalog/almacen", "Almacén"),
     ("https://www.superseis.com.py/catalog/bebidas-sin-alcohol", "Bebidas sin alcohol"),
     ("https://www.superseis.com.py/catalog/lacteos/leches", "Lácteos - Leches"),
     ("https://www.superseis.com.py/catalog/lacteos/yogures", "Lácteos - Yogures"),
     ("https://www.superseis.com.py/catalog/limpieza", "Limpieza"),
+    ("https://www.superseis.com.py/catalog/hogar-y-bazar", "Hogar y Bazar"),
+    ("https://www.superseis.com.py/catalog/carnes", "Carnes"),
+    ("https://www.superseis.com.py/catalog/Congelados", "Congelados"),
+    ("https://www.superseis.com.py/catalog/frescos", "Frescos"),
+    ("https://www.superseis.com.py/catalog/bebes", "Bebés"),
+    ("https://www.superseis.com.py/catalog/panaderia", "Panadería"),
+    ("https://www.superseis.com.py/catalog/ferreteria", "Ferretería"),
+    ("https://www.superseis.com.py/catalog/electrodomesticos", "Electrodomésticos"),
+    ("https://www.superseis.com.py/catalog/mascotas", "Mascotas"),
+    ("https://www.superseis.com.py/catalog/pastas", "Pastas"),
+    ("https://www.superseis.com.py/catalog/perfumeria", "Perfumería"),
+    ("https://www.superseis.com.py/catalog/reposteria", "Repostería"),
 ]
 
 
@@ -71,6 +78,12 @@ def extraer_productos(html):
     return productos
 
 
+def construir_url_pagina(url, pagina):
+    """Agrega el parámetro de página a una URL de categoría."""
+    separador = "&" if "?" in url else "?"
+    return f"{url}{separador}page={pagina}"
+
+
 def scrapear_superseis():
     """Scrapea productos de Superseis y retorna una lista de precios."""
     try:
@@ -84,17 +97,38 @@ def scrapear_superseis():
 
 
 def scrapear_categoria(url, nombre_categoria):
-    """Scrapea una categoría de Superseis y retorna sus productos."""
-    try:
-        respuesta = requests.get(url, headers=obtener_headers(), timeout=15)
-        respuesta.raise_for_status()
-    except requests.RequestException as error:
-        print(f"Error al scrapear {nombre_categoria}: {error}")
-        return []
+    """Scrapea todas las páginas de una categoría de Superseis."""
+    productos_categoria = []
+    paginas_con_productos = 0
 
-    productos = extraer_productos(respuesta.text)
-    print(f"{nombre_categoria}: {len(productos)} productos encontrados")
-    return productos
+    for pagina in range(1, 101):
+        url_pagina = construir_url_pagina(url, pagina)
+
+        try:
+            respuesta = requests.get(
+                url_pagina,
+                headers=obtener_headers(),
+                timeout=15,
+            )
+            respuesta.raise_for_status()
+        except requests.RequestException as error:
+            print(f"Error al scrapear {nombre_categoria}, página {pagina}: {error}")
+            break
+
+        productos = extraer_productos(respuesta.text)
+
+        if not productos:
+            break
+
+        productos_categoria.extend(productos)
+        paginas_con_productos += 1
+        time.sleep(2)
+
+    print(
+        f"{nombre_categoria}: {len(productos_categoria)} productos encontrados "
+        f"en {paginas_con_productos} páginas"
+    )
+    return productos_categoria
 
 
 def scrapear_todas_las_categorias():
