@@ -25,3 +25,18 @@ Inicializar la base de datos:
 ```bash
 python main.py
 ```
+
+Ejecutar una prueba corta sin enviar datos a Supabase:
+
+```bash
+python main.py --supermercado stock --limite-categorias 1 --limite-paginas 1 --sin-supabase
+```
+
+Ejecutar solo un supermercado:
+
+```bash
+python main.py --supermercado superseis
+python main.py --supermercado stock
+```
+
+El scraper de Stock lee sus categorías desde `stock_categorias_urls.txt`.
