@@ -1,6 +1,7 @@
 import os
 import re
 import sqlite3
+from io import BytesIO
 from html import escape
 from pathlib import Path
 
@@ -1099,6 +1100,81 @@ def preparar_tabla(precios):
     return tabla
 
 
+def preparar_exportacion_historico(precios):
+    """Prepara registros historicos filtrados para descarga."""
+    columnas = [
+        "supermercado",
+        "nombre_producto",
+        "nombre_normalizado",
+        "clave_matching",
+        "precio",
+        "unidad",
+        "fecha_registro",
+        "fecha_hora_registro",
+        "moneda",
+    ]
+    columnas_existentes = [columna for columna in columnas if columna in precios.columns]
+    historico = precios[columnas_existentes].copy()
+
+    if historico.empty:
+        return historico
+
+    historico["precio_formateado"] = historico["precio"].map(formatear_guaranies)
+    columnas_orden = [
+        columna
+        for columna in ["fecha_registro", "supermercado", "nombre_producto"]
+        if columna in historico.columns
+    ]
+
+    if columnas_orden:
+        historico = historico.sort_values(
+            columnas_orden,
+            ascending=[False] + [True] * (len(columnas_orden) - 1),
+        )
+
+    return historico.rename(
+        columns={
+            "supermercado": "Supermercado",
+            "nombre_producto": "Producto",
+            "nombre_normalizado": "Nombre normalizado",
+            "clave_matching": "Clave matching",
+            "precio": "Precio",
+            "precio_formateado": "Precio formateado",
+            "unidad": "Unidad",
+            "fecha_registro": "Fecha",
+            "fecha_hora_registro": "Fecha hora",
+            "moneda": "Moneda",
+        }
+    ).fillna("")
+
+
+def convertir_a_csv(dataframe):
+    """Convierte un dataframe a CSV compatible con planillas."""
+    return dataframe.to_csv(index=False).encode("utf-8-sig")
+
+
+def convertir_a_excel(hojas):
+    """Convierte varias tablas a un archivo Excel en memoria."""
+    buffer = BytesIO()
+
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as escritor:
+        for nombre_hoja, dataframe in hojas.items():
+            hoja = str(nombre_hoja)[:31]
+            dataframe.to_excel(escritor, sheet_name=hoja, index=False)
+            worksheet = escritor.sheets[hoja]
+
+            for indice, columna in enumerate(dataframe.columns):
+                ancho = max(
+                    len(str(columna)),
+                    dataframe[columna].astype(str).str.len().max()
+                    if not dataframe.empty
+                    else 0,
+                )
+                worksheet.set_column(indice, indice, min(max(ancho + 2, 12), 42))
+
+    return buffer.getvalue()
+
+
 def mostrar_resumen_filtros(precios_filtrados, total_precios, filtros):
     """Muestra un resumen visible de los filtros activos."""
     supermercados, texto_busqueda, rango_precio, rango_fecha = filtros
@@ -1240,6 +1316,127 @@ def preparar_comparacion_supermercados(precios):
         ["Diferencia", "Mejor precio"],
         ascending=[False, True],
     )
+
+
+def preparar_alertas_precios(precios, umbral_porcentaje=5):
+    """Detecta cambios relevantes contra el precio anterior disponible."""
+    if precios.empty:
+        return pd.DataFrame()
+
+    columnas_requeridas = {"supermercado", "nombre_producto", "precio", "fecha_registro"}
+    if not columnas_requeridas.issubset(precios.columns):
+        return pd.DataFrame()
+
+    datos = precios.copy()
+    if "nombre_normalizado" not in datos.columns:
+        datos["nombre_normalizado"] = datos["nombre_producto"].apply(
+            normalizar_nombre_comparable
+        )
+    if "clave_matching" not in datos.columns:
+        datos["clave_matching"] = datos["nombre_producto"].apply(
+            obtener_clave_matching_producto
+        )
+
+    datos["fecha"] = pd.to_datetime(datos["fecha_registro"], errors="coerce").dt.normalize()
+    datos["precio"] = pd.to_numeric(datos["precio"], errors="coerce")
+    datos = datos.dropna(subset=["fecha", "precio", "nombre_producto", "supermercado"])
+
+    if datos.empty:
+        return pd.DataFrame()
+
+    diarios = (
+        datos.groupby(["supermercado", "nombre_producto", "fecha"], as_index=False)
+        .agg(
+            precio=("precio", "mean"),
+            fecha_registro=("fecha_registro", "max"),
+            nombre_normalizado=("nombre_normalizado", "first"),
+            clave_matching=("clave_matching", "first"),
+        )
+        .sort_values(["supermercado", "nombre_producto", "fecha"])
+    )
+    filas = []
+
+    for (supermercado, producto), grupo in diarios.groupby(
+        ["supermercado", "nombre_producto"]
+    ):
+        grupo = grupo.sort_values("fecha")
+
+        if len(grupo) < 2:
+            continue
+
+        actual = grupo.iloc[-1]
+        anterior = grupo.iloc[-2]
+
+        if anterior["precio"] <= 0:
+            continue
+
+        variacion = actual["precio"] - anterior["precio"]
+        variacion_porcentaje = (variacion / anterior["precio"]) * 100
+        precio_minimo_historico = actual["precio"] <= grupo["precio"].min()
+        alerta = None
+        prioridad = 99
+
+        if variacion < 0 and precio_minimo_historico:
+            alerta = "Mínimo histórico"
+            prioridad = 0
+        elif variacion_porcentaje <= -umbral_porcentaje:
+            alerta = "Bajó"
+            prioridad = 1
+        elif variacion_porcentaje >= umbral_porcentaje:
+            alerta = "Subió"
+            prioridad = 2
+
+        if alerta is None:
+            continue
+
+        filas.append(
+            {
+                "Alerta": alerta,
+                "Supermercado": supermercado,
+                "Producto": producto,
+                "Nombre normalizado": actual.get("nombre_normalizado", ""),
+                "Clave matching": actual.get("clave_matching", ""),
+                "Precio anterior": anterior["precio"],
+                "Precio actual": actual["precio"],
+                "Variación": variacion,
+                "Variación %": variacion_porcentaje,
+                "Fecha anterior": anterior["fecha"].date().isoformat(),
+                "Fecha actual": actual["fecha"].date().isoformat(),
+                "_prioridad": prioridad,
+            }
+        )
+
+    if not filas:
+        return pd.DataFrame()
+
+    alertas = pd.DataFrame(filas)
+    alertas["_variacion_abs"] = alertas["Variación %"].abs()
+    alertas = alertas.sort_values(
+        ["_prioridad", "_variacion_abs", "Producto"],
+        ascending=[True, False, True],
+    )
+    return alertas.drop(columns=["_prioridad", "_variacion_abs"])
+
+
+def formatear_variacion_guaranies(valor):
+    """Formatea diferencias de precio con signo."""
+    signo = "+" if valor > 0 else "-" if valor < 0 else ""
+    return f"{signo}{formatear_guaranies(abs(valor))}"
+
+
+def preparar_tabla_alertas(alertas):
+    """Prepara alertas para mostrar o exportar."""
+    if alertas.empty:
+        return alertas.copy()
+
+    tabla = alertas.copy()
+
+    for columna in ["Precio anterior", "Precio actual"]:
+        tabla[columna] = tabla[columna].map(formatear_guaranies)
+
+    tabla["Variación"] = tabla["Variación"].map(formatear_variacion_guaranies)
+    tabla["Variación %"] = tabla["Variación %"].map(lambda valor: f"{valor:+.1f}%")
+    return tabla.fillna("")
 
 
 def abreviar_texto(texto, limite=58):
@@ -1446,11 +1643,190 @@ def mostrar_comparacion_supermercados(precios):
     )
 
 
+def mostrar_exportaciones(precios):
+    """Muestra descargas para los datos filtrados del dashboard."""
+    mostrar_encabezado_seccion(
+        "Exportar datos",
+        "Descargá los resultados filtrados para analizarlos fuera del dashboard.",
+        "CSV / Excel",
+    )
+
+    if precios.empty:
+        st.info("No hay datos filtrados para exportar.")
+        return
+
+    productos = preparar_tabla(precios)
+    comparacion = preparar_comparacion_supermercados(precios)
+    alertas = preparar_tabla_alertas(preparar_alertas_precios(precios))
+    historico = preparar_exportacion_historico(precios)
+    hojas_excel = {
+        "Productos filtrados": productos,
+        "Comparacion": comparacion,
+        "Alertas": alertas,
+        "Historico": historico,
+    }
+
+    with st.container(border=True):
+        st.caption(
+            "El CSV descarga cada vista por separado. El Excel incluye productos, "
+            "comparación e histórico en hojas distintas."
+        )
+        columnas = st.columns(5)
+        columnas[0].download_button(
+            "Productos CSV",
+            data=convertir_a_csv(productos),
+            file_name="preciospy_productos_filtrados.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+        columnas[1].download_button(
+            "Comparación CSV",
+            data=convertir_a_csv(comparacion),
+            file_name="preciospy_comparacion_supermercados.csv",
+            mime="text/csv",
+            disabled=comparacion.empty,
+            use_container_width=True,
+        )
+        columnas[2].download_button(
+            "Alertas CSV",
+            data=convertir_a_csv(alertas),
+            file_name="preciospy_alertas_precios.csv",
+            mime="text/csv",
+            disabled=alertas.empty,
+            use_container_width=True,
+        )
+        columnas[3].download_button(
+            "Histórico CSV",
+            data=convertir_a_csv(historico),
+            file_name="preciospy_historico_filtrado.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+        columnas[4].download_button(
+            "Excel completo",
+            data=convertir_a_excel(hojas_excel),
+            file_name="preciospy_exportacion.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            use_container_width=True,
+        )
+
+
+def mostrar_alertas_precios(precios):
+    """Muestra alertas de subidas, bajadas y minimos historicos."""
+    mostrar_encabezado_seccion(
+        "Alertas de cambios de precio",
+        "Detectamos productos que cambiaron de forma relevante contra su registro anterior.",
+        "Monitoreo",
+    )
+
+    alertas = preparar_alertas_precios(precios)
+
+    if alertas.empty:
+        st.info("No hay cambios relevantes de precio con los filtros actuales.")
+        return
+
+    cantidad_minimos = (alertas["Alerta"] == "Mínimo histórico").sum()
+    cantidad_bajadas = alertas["Alerta"].isin(["Mínimo histórico", "Bajó"]).sum()
+    cantidad_subidas = (alertas["Alerta"] == "Subió").sum()
+    columnas = st.columns(3)
+    columnas[0].metric("Bajadas detectadas", cantidad_bajadas)
+    columnas[1].metric("Mínimos históricos", cantidad_minimos)
+    columnas[2].metric("Subidas detectadas", cantidad_subidas)
+
+    tabla = preparar_tabla_alertas(alertas.head(80))
+    st.dataframe(
+        tabla,
+        hide_index=True,
+        width="stretch",
+        height=360,
+    )
+
+
+def preparar_opciones_evolucion(precios):
+    """Prepara productos equivalentes disponibles para evolucion historica."""
+    if precios.empty:
+        return pd.DataFrame()
+
+    datos = precios.copy()
+
+    if "clave_matching" not in datos.columns:
+        datos["clave_matching"] = datos["nombre_producto"].apply(
+            obtener_clave_matching_producto
+        )
+    if "etiqueta_matching" not in datos.columns:
+        datos["etiqueta_matching"] = datos["nombre_producto"].apply(
+            obtener_etiqueta_matching_producto
+        )
+
+    datos = datos[datos["clave_matching"].fillna("").astype(str).str.len() > 0].copy()
+
+    if datos.empty:
+        return pd.DataFrame()
+
+    opciones = (
+        datos.groupby("clave_matching", as_index=False)
+        .agg(
+            producto=("etiqueta_matching", "first"),
+            supermercados=("supermercado", "nunique"),
+            fechas=("fecha_registro", "nunique"),
+            registros=("precio", "size"),
+        )
+        .sort_values(["supermercados", "fechas", "producto"], ascending=[False, False, True])
+    )
+    opciones["label"] = opciones.apply(
+        lambda fila: (
+            f"{fila['producto']} · {int(fila['supermercados'])} supermercado(s) · "
+            f"{int(fila['fechas'])} día(s)"
+        ),
+        axis=1,
+    )
+    return opciones
+
+
+def preparar_evolucion_producto(precios, clave_matching):
+    """Agrupa la evolucion de un producto equivalente por fecha y supermercado."""
+    if precios.empty or not clave_matching:
+        return pd.DataFrame()
+
+    historial = precios.copy()
+
+    if "clave_matching" not in historial.columns:
+        historial["clave_matching"] = historial["nombre_producto"].apply(
+            obtener_clave_matching_producto
+        )
+
+    historial = historial[historial["clave_matching"] == clave_matching].copy()
+    historial["fecha"] = pd.to_datetime(
+        historial["fecha_registro"],
+        errors="coerce",
+    ).dt.normalize()
+    historial["precio"] = pd.to_numeric(historial["precio"], errors="coerce")
+    historial = historial.dropna(subset=["fecha", "precio", "supermercado"])
+
+    if historial.empty:
+        return pd.DataFrame()
+
+    agrupado = (
+        historial.groupby(["fecha", "supermercado"], as_index=False)
+        .agg(
+            precio=("precio", "mean"),
+            producto=("nombre_producto", "first"),
+            registros=("precio", "size"),
+        )
+        .sort_values(["fecha", "supermercado"])
+    )
+    agrupado["precio_formateado"] = agrupado["precio"].map(formatear_guaranies)
+    return agrupado
+
+
 def mostrar_evolucion_precios(precios):
     """Muestra la evolucion historica de un producto por supermercado."""
     mostrar_encabezado_seccion(
         "Evolución de precios",
-        "Elegí un producto y compará cómo se movió su precio en el tiempo.",
+        "Elegí un producto equivalente y compará cómo se movió su precio en el tiempo.",
         "Histórico",
     )
 
@@ -1458,39 +1834,47 @@ def mostrar_evolucion_precios(precios):
         st.info("No encontramos productos con esos filtros.")
         return
 
-    productos = sorted(precios["nombre_producto"].dropna().unique())
-    if not productos:
+    opciones = preparar_opciones_evolucion(precios)
+    if opciones.empty:
         st.info("No hay productos disponibles para analizar.")
         return
 
+    etiquetas = dict(zip(opciones["label"], opciones["clave_matching"]))
     with st.container(border=True):
-        producto_seleccionado = st.selectbox(
-            "Producto para analizar",
-            productos,
-            help="Seleccioná un producto para ver su precio en el tiempo.",
+        etiqueta_seleccionada = st.selectbox(
+            "Producto equivalente para analizar",
+            list(etiquetas.keys()),
+            help=(
+                "La evolución usa matching de productos, por eso puede unir nombres "
+                "equivalentes entre supermercados."
+            ),
         )
-    historial = precios[precios["nombre_producto"] == producto_seleccionado].copy()
-    historial["fecha"] = pd.to_datetime(
-        historial["fecha_registro"],
-        errors="coerce",
-    ).dt.normalize()
-    historial = historial.dropna(subset=["fecha", "precio"])
+    clave_seleccionada = etiquetas[etiqueta_seleccionada]
+    agrupado = preparar_evolucion_producto(precios, clave_seleccionada)
 
-    if historial["fecha"].nunique() < 2:
+    if agrupado["fecha"].nunique() < 2:
         st.info("No hay suficientes datos históricos para mostrar una evolución.")
         return
 
-    agrupado = (
-        historial.groupby(["fecha", "supermercado"], as_index=False)["precio"]
-        .mean()
-        .sort_values("fecha")
-    )
     grafico = px.line(
         agrupado,
         x="fecha",
         y="precio",
         color="supermercado",
+        markers=True,
+        hover_data={
+            "producto": True,
+            "precio_formateado": True,
+            "registros": True,
+            "fecha": "|%Y-%m-%d",
+            "precio": False,
+        },
         template="plotly_white",
+    )
+    grafico.update_layout(
+        xaxis_title="Fecha",
+        yaxis_title="Precio",
+        legend_title_text="Supermercado",
     )
 
     with st.container(border=True):
@@ -1529,6 +1913,8 @@ def mostrar_dashboard():
     precios_filtrados = filtrar_precios(precios, *filtros)
     mostrar_resumen_filtros(precios_filtrados, len(precios), filtros)
 
+    mostrar_exportaciones(precios_filtrados)
+    mostrar_alertas_precios(precios_filtrados)
     mostrar_grafico(precios_filtrados)
     mostrar_comparacion_supermercados(precios_filtrados)
     mostrar_evolucion_precios(precios_filtrados)

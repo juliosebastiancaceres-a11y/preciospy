@@ -6,3 +6,4 @@ plotly
 supabase
 python-dotenv
 pytest
+xlsxwriter
