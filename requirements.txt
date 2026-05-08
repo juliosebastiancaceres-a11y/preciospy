@@ -1,8 +1,7 @@
 requests
 beautifulsoup4
-lxml
 streamlit
 pandas
-plotly
 supabase
 python-dotenv
+pytest

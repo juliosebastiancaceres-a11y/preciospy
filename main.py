@@ -66,6 +66,10 @@ def main():
     )
     print(f"Productos scrapeados: {len(productos)}")
 
+    if not productos:
+        print("No se encontraron productos validos. No se guarda nada.")
+        return
+
     guardar_productos(productos)
 
     if argumentos.sin_supabase:
