@@ -3,6 +3,7 @@ from html import escape
 from pathlib import Path
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 
@@ -682,9 +683,9 @@ def mostrar_header():
         <div class="py-hero">
             <div class="hero-content">
                 <div class="hero-kicker">
-                    <span class="py-badge light">Supermercados PY</span>
-                    <span class="py-badge">Monitoreo inteligente</span>
-                    <span class="py-badge">Ahorro con datos reales</span>
+                    <span class="py-badge light">🗺️ Hecho en Paraguay</span>
+                    <span class="py-badge">📊 Datos actualizados diariamente</span>
+                    <span class="py-badge">🔍 +14.000 productos monitoreados</span>
                 </div>
                 <p class="app-title">PreciosPY</p>
                 <p class="app-subtitle">
@@ -812,13 +813,16 @@ def preparar_tabla(precios):
         "precio",
         "unidad",
         "fecha_registro",
-        "categoria",
-        "url_producto",
     ]
     columnas_existentes = [
         columna for columna in columnas if columna in precios.columns
     ]
-    tabla = precios.sort_values("precio")[columnas_existentes].copy()
+    tabla = (
+        precios.sort_values("fecha_registro", ascending=False)
+        .drop_duplicates(subset=["nombre_producto", "supermercado"])
+        [columnas_existentes]
+        .copy()
+    )
     tabla["precio"] = tabla["precio"].map(formatear_guaranies)
     tabla = tabla.fillna("")
     tabla = tabla.rename(
@@ -828,8 +832,6 @@ def preparar_tabla(precios):
             "precio": "Precio",
             "unidad": "Unidad",
             "fecha_registro": "Fecha",
-            "categoria": "Categoría",
-            "url_producto": "URL",
         }
     )
     return tabla
@@ -908,11 +910,12 @@ def mostrar_grafico(precios):
 
     ultimos_precios = obtener_ultimos_precios(precios)
     datos_grafico = (
-        ultimos_precios.sort_values("precio")
+        ultimos_precios.sort_values("precio", ascending=True)
         .drop_duplicates(subset=["nombre_producto", "supermercado"])
         .head(20)
         .copy()
     )
+    datos_grafico = datos_grafico.sort_values("precio", ascending=True)
 
     if datos_grafico.empty:
         st.info("No hay productos suficientes para graficar con esos filtros.")
@@ -1030,6 +1033,17 @@ def mostrar_grafico(precios):
     )
     st.caption("Se muestran hasta 20 resultados para mantener el gráfico legible.")
 
+    st.markdown("### Tabla de productos")
+    tabla_productos = datos_grafico[
+        ["nombre_producto", "supermercado", "precio", "fecha_registro"]
+    ].copy()
+    tabla_productos["precio"] = tabla_productos["precio"].map(formatear_guaranies)
+    st.dataframe(
+        tabla_productos.head(100),
+        hide_index=True,
+        height=400,
+    )
+
 
 def mostrar_evolucion_precios(precios):
     """Muestra la evolucion historica de un producto por supermercado."""
@@ -1070,14 +1084,16 @@ def mostrar_evolucion_precios(precios):
         .mean()
         .sort_values("fecha")
     )
-    serie = agrupado.pivot(
-        index="fecha",
-        columns="supermercado",
-        values="precio",
+    grafico = px.line(
+        agrupado,
+        x="fecha",
+        y="precio",
+        color="supermercado",
+        template="plotly_white",
     )
 
     with st.container(border=True):
-        st.line_chart(serie, height=320)
+        st.plotly_chart(grafico, width="stretch")
 
 
 def mostrar_tabla(precios):
@@ -1088,19 +1104,10 @@ def mostrar_tabla(precios):
         "Productos encontrados",
     )
     tabla = preparar_tabla(precios)
-    configuracion_columnas = {}
-
-    if "URL" in tabla.columns:
-        configuracion_columnas["URL"] = st.column_config.LinkColumn(
-            "URL",
-            display_text="Abrir",
-        )
-
     st.dataframe(
         tabla,
         hide_index=True,
         width="stretch",
-        column_config=configuracion_columnas,
     )
 
 
