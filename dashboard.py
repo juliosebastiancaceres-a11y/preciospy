@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 from html import escape
 from pathlib import Path
@@ -12,6 +13,7 @@ from supabase import create_client
 
 RUTA_DB = Path(__file__).resolve().parent / "data" / "preciospy.db"
 RUTA_ENV = Path(__file__).resolve().parent / ".env"
+RUTA_LOGS = Path(__file__).resolve().parent / "logs"
 TAMANO_LOTE_SUPABASE = 1000
 COLUMNAS_PRECIOS = [
     "supermercado",
@@ -452,6 +454,54 @@ def aplicar_estilos():
                 padding: 0.25rem 0.6rem;
             }
 
+            .health-grid {
+                display: grid;
+                gap: 0.85rem;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                margin-top: 1rem;
+            }
+
+            .health-card {
+                animation: fadeInUp 520ms ease-out both;
+                background: rgba(255, 255, 255, 0.82);
+                border: 1px solid var(--py-border);
+                border-radius: 14px;
+                box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+                padding: 0.9rem 1rem;
+                transition:
+                    border-color 160ms ease,
+                    box-shadow 160ms ease,
+                    transform 160ms ease;
+            }
+
+            .health-card:hover {
+                border-color: rgba(0, 56, 168, 0.22);
+                box-shadow: 0 16px 34px rgba(0, 56, 168, 0.12);
+                transform: translateY(-3px);
+            }
+
+            .health-label {
+                color: var(--py-muted) !important;
+                font-size: 0.72rem;
+                font-weight: 760;
+                text-transform: uppercase;
+            }
+
+            .health-value {
+                color: var(--py-text) !important;
+                font-size: 1rem;
+                font-weight: 820;
+                margin-top: 0.35rem;
+            }
+
+            .health-status-ok {
+                color: var(--py-success) !important;
+            }
+
+            .health-status-warn {
+                color: var(--py-warning) !important;
+            }
+
             [data-testid="stCaptionContainer"],
             [data-testid="stCaptionContainer"] * {
                 color: var(--py-muted) !important;
@@ -519,6 +569,7 @@ def aplicar_estilos():
                 [data-testid="stVegaLiteChart"],
                 [data-testid="stDataFrame"],
                 [data-testid="stVerticalBlockBorderWrapper"],
+                .health-card,
                 [data-testid="stProgress"] [role="progressbar"]::after {
                     animation: none;
                 }
@@ -528,7 +579,8 @@ def aplicar_estilos():
                 .filter-summary,
                 [data-testid="stVegaLiteChart"],
                 [data-testid="stDataFrame"],
-                [data-testid="stVerticalBlockBorderWrapper"] {
+                [data-testid="stVerticalBlockBorderWrapper"],
+                .health-card {
                     transition: none;
                     transform: none;
                 }
@@ -544,6 +596,10 @@ def aplicar_estilos():
                 .section-heading {
                     align-items: flex-start;
                     flex-direction: column;
+                }
+
+                .health-grid {
+                    grid-template-columns: 1fr;
                 }
             }
         </style>
@@ -622,14 +678,20 @@ def cargar_precios_supabase():
 
 
 @st.cache_data(show_spinner=False, ttl=300)
-def cargar_precios():
-    """Carga precios desde Supabase y usa SQLite local como respaldo."""
+def cargar_precios_con_fuente():
+    """Carga precios y retorna la fuente activa."""
     precios = cargar_precios_supabase()
 
     if not precios.empty:
-        return precios
+        return precios, "Supabase"
 
-    return cargar_precios_sqlite()
+    return cargar_precios_sqlite(), "SQLite local"
+
+
+def cargar_precios():
+    """Carga precios desde la fuente disponible."""
+    precios, _ = cargar_precios_con_fuente()
+    return precios
 
 
 def formatear_guaranies(precio):
@@ -719,6 +781,77 @@ def obtener_rango_fechas(precios):
     return fechas.min().date(), fechas.max().date()
 
 
+def formatear_fecha_hora(valor):
+    """Formatea una fecha/hora para mostrarla en el dashboard."""
+    if not valor:
+        return "Sin datos"
+
+    fecha = pd.to_datetime(valor, errors="coerce")
+
+    if pd.isna(fecha):
+        return str(valor)
+
+    return fecha.strftime("%Y-%m-%d %H:%M")
+
+
+def obtener_ultima_sincronizacion(precios):
+    """Obtiene la ultima fecha/hora disponible en los datos cargados."""
+    if precios.empty:
+        return "Sin datos"
+
+    if "fecha_hora_registro" in precios.columns:
+        fechas_hora = pd.to_datetime(
+            precios["fecha_hora_registro"],
+            errors="coerce",
+        ).dropna()
+
+        if not fechas_hora.empty:
+            return formatear_fecha_hora(fechas_hora.max())
+
+    fecha_registro = pd.to_datetime(precios["fecha_registro"], errors="coerce").dropna()
+
+    if fecha_registro.empty:
+        return "Sin datos"
+
+    return fecha_registro.max().strftime("%Y-%m-%d")
+
+
+def obtener_salud_scraper():
+    """Lee el ultimo log local del scraper y extrae datos operativos."""
+    logs = sorted(RUTA_LOGS.glob("scraper-*.log"), reverse=True)
+
+    if not logs:
+        return {
+            "ultimo_log": "Sin logs",
+            "estado": "Sin datos",
+            "sincronizados": "Sin datos",
+            "errores": "Sin logs locales",
+            "ok": False,
+        }
+
+    ultimo_log = logs[0]
+    contenido = ultimo_log.read_text(encoding="utf-8", errors="replace")
+    estado_match = re.search(r"Estado final:\s*(\d+)", contenido)
+    sincronizados = sum(
+        int(valor)
+        for valor in re.findall(r"Productos sincronizados con Supabase:\s*(\d+)", contenido)
+    )
+    errores = [
+        linea.strip()
+        for linea in contenido.splitlines()
+        if "Error " in linea or "Traceback" in linea
+    ]
+    estado = estado_match.group(1) if estado_match else "desconocido"
+
+    return {
+        "ultimo_log": ultimo_log.name.replace("scraper-", "").replace(".log", ""),
+        "estado": f"OK ({estado})" if estado == "0" else f"Error ({estado})",
+        "sincronizados": f"{sincronizados:,}".replace(",", "."),
+        "errores": "Sin errores recientes" if not errores else errores[-1][:120],
+        "ok": estado == "0" and not errores,
+    }
+
+
 def mostrar_encabezado_seccion(titulo, descripcion, etiqueta=None):
     """Renderiza encabezados de seccion con jerarquia consistente."""
     etiqueta_html = f'<span class="section-pill">{escape(etiqueta)}</span>' if etiqueta else ""
@@ -805,6 +938,51 @@ def mostrar_metricas(precios):
             """,
             unsafe_allow_html=True,
         )
+
+
+def mostrar_salud_sistema(precios, fuente):
+    """Muestra una mini vista de salud operativa del sistema."""
+    salud = obtener_salud_scraper()
+    estado_clase = "health-status-ok" if salud["ok"] else "health-status-warn"
+    errores_clase = "health-status-ok" if salud["errores"] == "Sin errores recientes" else "health-status-warn"
+    tarjetas = [
+        ("Fuente actual", fuente, "Datos activos del dashboard", "health-status-ok"),
+        (
+            "Última sincronización",
+            obtener_ultima_sincronizacion(precios),
+            "Fecha/hora más reciente en datos",
+            "health-status-ok",
+        ),
+        (
+            "Último scraper local",
+            salud["estado"],
+            salud["ultimo_log"],
+            estado_clase,
+        ),
+        (
+            "Productos sincronizados",
+            salud["sincronizados"],
+            salud["errores"],
+            errores_clase,
+        ),
+    ]
+    tarjetas_html = []
+
+    for etiqueta, valor, descripcion, clase in tarjetas:
+        tarjetas_html.append(
+            f"""
+            <div class="health-card">
+                <div class="health-label">{escape(str(etiqueta))}</div>
+                <div class="health-value {clase}">{escape(str(valor))}</div>
+                <div class="metric-desc">{escape(str(descripcion))}</div>
+            </div>
+            """
+        )
+
+    st.markdown(
+        f'<div class="health-grid">{"".join(tarjetas_html)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def mostrar_filtros(precios):
@@ -1176,13 +1354,14 @@ def mostrar_dashboard():
     aplicar_estilos()
     mostrar_header()
 
-    precios = cargar_precios()
+    precios, fuente = cargar_precios_con_fuente()
 
     if precios.empty:
         st.info("Todavía no hay productos guardados en la base de datos.")
         return
 
     mostrar_metricas(precios)
+    mostrar_salud_sistema(precios, fuente)
     filtros = mostrar_filtros(precios)
     precios_filtrados = filtrar_precios(precios, *filtros)
     mostrar_resumen_filtros(precios_filtrados, len(precios), filtros)
