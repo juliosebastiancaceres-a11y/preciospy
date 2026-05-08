@@ -841,9 +841,82 @@ def obtener_ultima_sincronizacion(precios):
     return fecha_registro.max().strftime("%Y-%m-%d")
 
 
+def parsear_log_scraper(ruta_log, lineas_detalle=40):
+    """Extrae resumen operativo de un archivo de log del scraper."""
+    contenido = ruta_log.read_text(encoding="utf-8", errors="replace")
+    lineas = contenido.splitlines()
+    estado_match = re.search(r"Estado final:\s*(\d+)", contenido)
+    codigos = [int(valor) for valor in re.findall(r"Codigo de salida:\s*(\d+)", contenido)]
+    scrapeados = sum(
+        int(valor) for valor in re.findall(r"Productos scrapeados:\s*(\d+)", contenido)
+    )
+    guardados_sqlite = sum(
+        int(valor)
+        for valor in re.findall(r"Productos guardados en SQLite:\s*(\d+)", contenido)
+    )
+    sincronizados = sum(
+        int(valor)
+        for valor in re.findall(r"Productos sincronizados con Supabase:\s*(\d+)", contenido)
+    )
+    errores = [
+        linea.strip()
+        for linea in lineas
+        if "Error " in linea or "Traceback" in linea or "Client Error" in linea
+    ]
+    fecha_match = re.search(r"Fecha:\s*(.+)", contenido)
+    inicio_match = re.search(r"Inicio:\s*(.+)", contenido)
+    fin_matches = re.findall(r"Fin:\s*(.+)", contenido)
+    estado = estado_match.group(1) if estado_match else "desconocido"
+    ok = estado == "0" and not errores and all(codigo == 0 for codigo in codigos)
+
+    return {
+        "archivo": ruta_log.name,
+        "fecha": fecha_match.group(1).strip() if fecha_match else "",
+        "inicio": inicio_match.group(1).strip() if inicio_match else "",
+        "fin": fin_matches[-1].strip() if fin_matches else "",
+        "estado": f"OK ({estado})" if estado == "0" else f"Error ({estado})",
+        "scrapeados": scrapeados,
+        "sqlite": guardados_sqlite,
+        "supabase": sincronizados,
+        "errores": len(errores),
+        "ultimo_error": errores[-1][:180] if errores else "Sin errores",
+        "detalle": "\n".join(lineas[-lineas_detalle:]),
+        "ok": ok,
+    }
+
+
+def obtener_logs_scraper(limite=5):
+    """Lee los ultimos logs locales del scraper."""
+    logs = sorted(RUTA_LOGS.glob("scraper-*.log"), reverse=True)[:limite]
+    registros = []
+
+    for ruta_log in logs:
+        try:
+            registros.append(parsear_log_scraper(ruta_log))
+        except OSError as error:
+            registros.append(
+                {
+                    "archivo": ruta_log.name,
+                    "fecha": "",
+                    "inicio": "",
+                    "fin": "",
+                    "estado": "Error lectura",
+                    "scrapeados": 0,
+                    "sqlite": 0,
+                    "supabase": 0,
+                    "errores": 1,
+                    "ultimo_error": str(error),
+                    "detalle": "",
+                    "ok": False,
+                }
+            )
+
+    return registros
+
+
 def obtener_salud_scraper():
     """Lee el ultimo log local del scraper y extrae datos operativos."""
-    logs = sorted(RUTA_LOGS.glob("scraper-*.log"), reverse=True)
+    logs = obtener_logs_scraper(limite=1)
 
     if not logs:
         return {
@@ -855,25 +928,13 @@ def obtener_salud_scraper():
         }
 
     ultimo_log = logs[0]
-    contenido = ultimo_log.read_text(encoding="utf-8", errors="replace")
-    estado_match = re.search(r"Estado final:\s*(\d+)", contenido)
-    sincronizados = sum(
-        int(valor)
-        for valor in re.findall(r"Productos sincronizados con Supabase:\s*(\d+)", contenido)
-    )
-    errores = [
-        linea.strip()
-        for linea in contenido.splitlines()
-        if "Error " in linea or "Traceback" in linea
-    ]
-    estado = estado_match.group(1) if estado_match else "desconocido"
 
     return {
-        "ultimo_log": ultimo_log.name.replace("scraper-", "").replace(".log", ""),
-        "estado": f"OK ({estado})" if estado == "0" else f"Error ({estado})",
-        "sincronizados": f"{sincronizados:,}".replace(",", "."),
-        "errores": "Sin errores recientes" if not errores else errores[-1][:120],
-        "ok": estado == "0" and not errores,
+        "ultimo_log": ultimo_log["archivo"].replace("scraper-", "").replace(".log", ""),
+        "estado": ultimo_log["estado"],
+        "sincronizados": f"{ultimo_log['supabase']:,}".replace(",", "."),
+        "errores": ultimo_log["ultimo_error"],
+        "ok": ultimo_log["ok"],
     }
 
 
@@ -1008,6 +1069,56 @@ def mostrar_salud_sistema(precios, fuente):
         f'<div class="health-grid">{"".join(tarjetas_html)}</div>',
         unsafe_allow_html=True,
     )
+
+
+def mostrar_logs_scraper():
+    """Muestra una vista resumida de los ultimos logs locales del scraper."""
+    mostrar_encabezado_seccion(
+        "Logs del scraper",
+        "Revisá las últimas ejecuciones locales, productos sincronizados y errores recientes.",
+        "Operación",
+    )
+    logs = obtener_logs_scraper(limite=8)
+
+    if not logs:
+        st.info("Todavía no hay logs locales del scraper para mostrar.")
+        return
+
+    resumen = pd.DataFrame(
+        [
+            {
+                "Archivo": log["archivo"],
+                "Estado": log["estado"],
+                "Fecha": log["fecha"],
+                "Productos scrapeados": log["scrapeados"],
+                "SQLite": log["sqlite"],
+                "Supabase": log["supabase"],
+                "Errores": log["errores"],
+                "Último error": log["ultimo_error"],
+            }
+            for log in logs
+        ]
+    )
+
+    with st.container(border=True):
+        st.dataframe(
+            resumen,
+            hide_index=True,
+            width="stretch",
+            height=min(320, 86 + len(resumen) * 36),
+        )
+
+        for log in logs[:3]:
+            etiqueta = (
+                f"{log['estado']} · {log['archivo']} · "
+                f"Supabase: {log['supabase']:,}".replace(",", ".")
+            )
+            with st.expander(etiqueta):
+                st.caption(
+                    f"Inicio: {log['inicio'] or 'Sin dato'} · "
+                    f"Fin: {log['fin'] or 'Sin dato'}"
+                )
+                st.code(log["detalle"] or "Sin detalle disponible.", language="text")
 
 
 def mostrar_filtros(precios):
@@ -1909,6 +2020,7 @@ def mostrar_dashboard():
 
     mostrar_metricas(precios)
     mostrar_salud_sistema(precios, fuente)
+    mostrar_logs_scraper()
     filtros = mostrar_filtros(precios)
     precios_filtrados = filtrar_precios(precios, *filtros)
     mostrar_resumen_filtros(precios_filtrados, len(precios), filtros)
