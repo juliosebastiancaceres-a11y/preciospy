@@ -3,6 +3,7 @@ from pathlib import Path
 from urllib.parse import urljoin
 import re
 import time
+import unicodedata
 
 import requests
 from bs4 import BeautifulSoup
@@ -97,6 +98,177 @@ def normalizar_nombre_producto(nombre):
     return " ".join(str(nombre or "").split()).strip()
 
 
+def _quitar_acentos(texto):
+    return "".join(
+        caracter
+        for caracter in unicodedata.normalize("NFKD", texto)
+        if not unicodedata.combining(caracter)
+    )
+
+
+def _parsear_numero(texto):
+    try:
+        return float(texto.replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _formatear_numero_unidad(numero):
+    if numero is None:
+        return None
+
+    if numero.is_integer():
+        return str(int(numero))
+
+    return f"{numero:g}"
+
+
+def _normalizar_token_matching(token):
+    sinonimos = {
+        "choc": "chocolate",
+        "choco": "chocolate",
+        "clasica": "clasico",
+        "clasicos": "clasico",
+        "originales": "original",
+        "ret": "retornable",
+        "desc": "descartable",
+        "descart": "descartable",
+    }
+    return sinonimos.get(token, token)
+
+
+def _extraer_tokens_matching(nombre):
+    nombre_comparable = normalizar_nombre_comparable(nombre)
+
+    if not nombre_comparable:
+        return [], []
+
+    tokens = nombre_comparable.split()
+    unidades_medida = {"L", "ml", "g", "kg"}
+    palabras_omitidas = {
+        "a",
+        "al",
+        "bot",
+        "botella",
+        "botellas",
+        "de",
+        "del",
+        "el",
+        "envase",
+        "la",
+        "las",
+        "los",
+        "marca",
+        "pet",
+        "producto",
+        "sabor",
+        "tipo",
+    }
+    tokens_producto = []
+    unidades = []
+    indice = 0
+
+    while indice < len(tokens):
+        token = tokens[indice]
+        siguiente = tokens[indice + 1] if indice + 1 < len(tokens) else ""
+
+        if _parsear_numero(token) is not None and siguiente in unidades_medida:
+            unidades.append(f"{token} {siguiente}")
+            indice += 2
+            continue
+
+        token = _normalizar_token_matching(token)
+        if token not in palabras_omitidas:
+            tokens_producto.append(token)
+
+        indice += 1
+
+    return list(dict.fromkeys(tokens_producto)), list(dict.fromkeys(unidades))
+
+
+def normalizar_nombre_comparable(nombre):
+    """Normaliza nombres para busqueda y comparacion entre supermercados."""
+    nombre_limpio = normalizar_nombre_producto(nombre)
+
+    if not nombre_limpio:
+        return ""
+
+    texto = _quitar_acentos(nombre_limpio).lower()
+    texto = re.sub(r"(\d)([a-z])", r"\1 \2", texto)
+    texto = re.sub(r"([a-z])(\d)", r"\1 \2", texto)
+    texto = re.sub(r"[^a-z0-9,.]+", " ", texto)
+    tokens = texto.split()
+
+    unidades_litro = {"l", "lt", "lts", "litro", "litros"}
+    unidades_mililitro = {"ml", "mililitro", "mililitros", "cc"}
+    unidades_gramo = {"g", "gr", "grs", "gramo", "gramos"}
+    unidades_kilo = {"kg", "kgs", "kilo", "kilos", "kilogramo", "kilogramos"}
+    unidades_conocidas = (
+        unidades_litro | unidades_mililitro | unidades_gramo | unidades_kilo
+    )
+    tokens_normalizados = []
+    indice = 0
+
+    while indice < len(tokens):
+        token = tokens[indice]
+        siguiente = tokens[indice + 1] if indice + 1 < len(tokens) else ""
+        numero = _parsear_numero(token)
+
+        if numero is not None and siguiente in unidades_litro:
+            tokens_normalizados.extend([_formatear_numero_unidad(numero), "L"])
+            indice += 2
+            continue
+
+        if numero is not None and siguiente in unidades_mililitro:
+            if numero >= 1000 and numero % 1000 == 0:
+                tokens_normalizados.extend(
+                    [_formatear_numero_unidad(numero / 1000), "L"]
+                )
+            else:
+                tokens_normalizados.extend([_formatear_numero_unidad(numero), "ml"])
+            indice += 2
+            continue
+
+        if numero is not None and siguiente in unidades_gramo:
+            tokens_normalizados.extend([_formatear_numero_unidad(numero), "g"])
+            indice += 2
+            continue
+
+        if numero is not None and siguiente in unidades_kilo:
+            tokens_normalizados.extend([_formatear_numero_unidad(numero), "kg"])
+            indice += 2
+            continue
+
+        if token not in unidades_conocidas:
+            tokens_normalizados.append(token)
+
+        indice += 1
+
+    return " ".join(tokens_normalizados)
+
+
+def obtener_clave_matching_producto(nombre):
+    """Crea una clave flexible para comparar productos equivalentes."""
+    tokens_unicos, unidades_unicas = _extraer_tokens_matching(nombre)
+    tokens_unicos = sorted(tokens_unicos)
+    unidades_unicas = sorted(unidades_unicas)
+
+    if not tokens_unicos:
+        return ""
+
+    return " ".join(tokens_unicos + unidades_unicas)
+
+
+def obtener_etiqueta_matching_producto(nombre):
+    """Crea una etiqueta legible para mostrar productos equivalentes."""
+    tokens_unicos, unidades_unicas = _extraer_tokens_matching(nombre)
+
+    if not tokens_unicos:
+        return ""
+
+    return " ".join(tokens_unicos + unidades_unicas)
+
+
 def fecha_registro_actual():
     return datetime.today().strftime("%Y-%m-%d")
 
@@ -123,6 +295,7 @@ def construir_producto(
     return {
         "supermercado": supermercado,
         "nombre_producto": nombre_producto,
+        "nombre_normalizado": normalizar_nombre_comparable(nombre_producto),
         "precio": precio,
         "unidad": unidad,
         "fecha_registro": fecha_registro_actual(),

@@ -8,6 +8,11 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from dotenv import load_dotenv
+from scraper import (
+    normalizar_nombre_comparable,
+    obtener_clave_matching_producto,
+    obtener_etiqueta_matching_producto,
+)
 from supabase import create_client
 
 
@@ -620,6 +625,15 @@ def normalizar_precios(precios):
         precios["fecha_registro"],
         errors="coerce",
     )
+    precios["nombre_normalizado"] = precios["nombre_producto"].apply(
+        normalizar_nombre_comparable
+    )
+    precios["clave_matching"] = precios["nombre_producto"].apply(
+        obtener_clave_matching_producto
+    )
+    precios["etiqueta_matching"] = precios["nombre_producto"].apply(
+        obtener_etiqueta_matching_producto
+    )
     return precios.dropna(subset=["precio", "nombre_producto", "supermercado"])
 
 
@@ -743,13 +757,23 @@ def filtrar_precios(
 
     texto_busqueda = texto_busqueda.strip()
     if texto_busqueda:
-        filtrados = filtrados[
-            filtrados["nombre_producto"].str.contains(
-                texto_busqueda,
+        texto_normalizado = normalizar_nombre_comparable(texto_busqueda)
+        filtro_nombre_visible = filtrados["nombre_producto"].str.contains(
+            texto_busqueda,
+            case=False,
+            na=False,
+            regex=False,
+        )
+        filtro_nombre_normalizado = False
+        if texto_normalizado:
+            filtro_nombre_normalizado = filtrados["nombre_normalizado"].str.contains(
+                texto_normalizado,
                 case=False,
                 na=False,
                 regex=False,
             )
+        filtrados = filtrados[
+            filtro_nombre_visible | filtro_nombre_normalizado
         ]
 
     if rango_fecha and "fecha_registro_dt" in filtrados.columns:
@@ -1124,6 +1148,100 @@ def obtener_ultimos_precios(precios):
     )
 
 
+def obtener_ultimos_precios_comparables(precios):
+    """Retorna el ultimo precio por nombre normalizado y supermercado."""
+    if precios.empty:
+        return precios.copy()
+
+    comparables = precios.copy()
+
+    if "nombre_normalizado" not in comparables.columns:
+        comparables["nombre_normalizado"] = comparables["nombre_producto"].apply(
+            normalizar_nombre_comparable
+        )
+    if "clave_matching" not in comparables.columns:
+        comparables["clave_matching"] = comparables["nombre_producto"].apply(
+            obtener_clave_matching_producto
+        )
+    if "etiqueta_matching" not in comparables.columns:
+        comparables["etiqueta_matching"] = comparables["nombre_producto"].apply(
+            obtener_etiqueta_matching_producto
+        )
+
+    comparables = comparables[
+        comparables["clave_matching"].fillna("").astype(str).str.len() > 0
+    ].copy()
+    comparables["fecha_orden"] = pd.to_datetime(
+        comparables["fecha_registro"],
+        errors="coerce",
+    )
+    comparables["fecha_hora_orden"] = pd.to_datetime(
+        comparables.get("fecha_hora_registro"),
+        errors="coerce",
+    )
+    comparables = comparables.sort_values(
+        ["fecha_orden", "fecha_hora_orden", "precio"],
+        ascending=[False, False, True],
+        na_position="last",
+    )
+    return comparables.drop_duplicates(
+        subset=["clave_matching", "supermercado"],
+        keep="first",
+    )
+
+
+def preparar_comparacion_supermercados(precios):
+    """Prepara coincidencias comparables entre supermercados."""
+    ultimos = obtener_ultimos_precios_comparables(precios)
+
+    if ultimos.empty or ultimos["supermercado"].nunique() < 2:
+        return pd.DataFrame()
+
+    filas = []
+    supermercados = sorted(ultimos["supermercado"].dropna().unique())
+
+    for clave_matching, grupo in ultimos.groupby("clave_matching"):
+        if grupo["supermercado"].nunique() < 2:
+            continue
+
+        grupo = grupo.sort_values("precio", ascending=True)
+        mejor = grupo.iloc[0]
+        mayor = grupo.iloc[-1]
+        diferencia = mayor["precio"] - mejor["precio"]
+        porcentaje = (diferencia / mayor["precio"]) * 100 if mayor["precio"] else 0
+        coincidencia = (
+            "Exacta" if grupo["nombre_normalizado"].nunique() == 1 else "Flexible"
+        )
+        fila = {
+            "Producto comparable": mejor["etiqueta_matching"] or clave_matching,
+            "Producto mejor precio": mejor["nombre_producto"],
+            "Supermercado más barato": mejor["supermercado"],
+            "Coincidencia": coincidencia,
+            "Mejor precio": mejor["precio"],
+            "Diferencia": diferencia,
+            "Ahorro %": porcentaje,
+            "Fecha": max(grupo["fecha_registro"].astype(str)),
+        }
+
+        for supermercado in supermercados:
+            precios_supermercado = grupo[grupo["supermercado"] == supermercado]
+            fila[supermercado] = (
+                precios_supermercado.iloc[0]["precio"]
+                if not precios_supermercado.empty
+                else None
+            )
+
+        filas.append(fila)
+
+    if not filas:
+        return pd.DataFrame()
+
+    return pd.DataFrame(filas).sort_values(
+        ["Diferencia", "Mejor precio"],
+        ascending=[False, True],
+    )
+
+
 def abreviar_texto(texto, limite=58):
     """Recorta textos largos para que el grafico mantenga buena lectura."""
     texto = str(texto).strip()
@@ -1283,6 +1401,51 @@ def mostrar_grafico(precios):
     )
 
 
+def mostrar_comparacion_supermercados(precios):
+    """Muestra productos equivalentes encontrados entre supermercados."""
+    mostrar_encabezado_seccion(
+        "Comparación entre supermercados",
+        "Detectamos productos equivalentes por nombre normalizado y mostramos dónde conviene comprar.",
+        "Matching",
+    )
+
+    comparacion = preparar_comparacion_supermercados(precios)
+
+    if comparacion.empty:
+        st.info(
+            "Todavía no hay coincidencias suficientes entre supermercados con estos filtros."
+        )
+        return
+
+    tabla = comparacion.head(50).copy()
+    columnas_precio = [
+        columna
+        for columna in tabla.columns
+        if columna
+        not in {
+            "Producto comparable",
+            "Producto mejor precio",
+            "Supermercado más barato",
+            "Coincidencia",
+            "Ahorro %",
+            "Fecha",
+        }
+    ]
+
+    for columna in columnas_precio:
+        tabla[columna] = tabla[columna].map(
+            lambda valor: "" if pd.isna(valor) else formatear_guaranies(valor)
+        )
+
+    tabla["Ahorro %"] = tabla["Ahorro %"].map(lambda valor: f"{valor:.1f}%")
+    st.dataframe(
+        tabla,
+        hide_index=True,
+        width="stretch",
+        height=360,
+    )
+
+
 def mostrar_evolucion_precios(precios):
     """Muestra la evolucion historica de un producto por supermercado."""
     mostrar_encabezado_seccion(
@@ -1367,6 +1530,7 @@ def mostrar_dashboard():
     mostrar_resumen_filtros(precios_filtrados, len(precios), filtros)
 
     mostrar_grafico(precios_filtrados)
+    mostrar_comparacion_supermercados(precios_filtrados)
     mostrar_evolucion_precios(precios_filtrados)
     mostrar_tabla(precios_filtrados)
 
