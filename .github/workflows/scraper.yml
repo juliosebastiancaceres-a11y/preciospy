@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configurar Python
         uses: actions/setup-python@v5
@@ -23,8 +23,15 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: Ejecutar scraper
-        run: python3 main.py
+      - name: Ejecutar scraper Stock
+        run: python3 -u main.py --supermercado stock --limite-categorias 10 --limite-paginas 2
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+
+      - name: Intentar scraper Superseis
+        continue-on-error: true
+        run: python3 -u main.py --supermercado superseis --limite-categorias 5 --limite-paginas 2
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}

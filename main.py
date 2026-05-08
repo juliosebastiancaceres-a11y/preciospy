@@ -1,4 +1,5 @@
 import argparse
+import sys
 
 from database import guardar_en_supabase, guardar_productos, inicializar_db
 from scraper import scrapear_stock, scrapear_todas_las_categorias
@@ -68,16 +69,22 @@ def main():
 
     if not productos:
         print("No se encontraron productos validos. No se guarda nada.")
-        return
+        return 1
 
     guardar_productos(productos)
 
     if argumentos.sin_supabase:
         print("Supabase omitido por opcion --sin-supabase.")
-        return
+        return 0
 
-    guardar_en_supabase(productos)
+    productos_supabase = guardar_en_supabase(productos)
+
+    if productos_supabase == 0:
+        print("No se sincronizaron productos con Supabase.")
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

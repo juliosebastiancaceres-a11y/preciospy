@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from html import escape
 from pathlib import Path
@@ -5,9 +6,13 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from dotenv import load_dotenv
+from supabase import create_client
 
 
 RUTA_DB = Path(__file__).resolve().parent / "data" / "preciospy.db"
+RUTA_ENV = Path(__file__).resolve().parent / ".env"
+TAMANO_LOTE_SUPABASE = 1000
 COLUMNAS_PRECIOS = [
     "supermercado",
     "nombre_producto",
@@ -547,18 +552,8 @@ def aplicar_estilos():
     )
 
 
-@st.cache_data(show_spinner=False)
-def cargar_precios():
-    """Carga todos los registros de precios desde SQLite."""
-    if not RUTA_DB.exists():
-        return pd.DataFrame(columns=COLUMNAS_PRECIOS)
-
-    try:
-        with sqlite3.connect(RUTA_DB) as conexion:
-            precios = pd.read_sql_query("SELECT * FROM precios", conexion)
-    except Exception:
-        return pd.DataFrame(columns=COLUMNAS_PRECIOS)
-
+def normalizar_precios(precios):
+    """Normaliza columnas y tipos esperados por el dashboard."""
     for columna in COLUMNAS_PRECIOS:
         if columna not in precios.columns:
             precios[columna] = None
@@ -570,6 +565,71 @@ def cargar_precios():
         errors="coerce",
     )
     return precios.dropna(subset=["precio", "nombre_producto", "supermercado"])
+
+
+def cargar_precios_sqlite():
+    """Carga todos los registros de precios desde SQLite."""
+    if not RUTA_DB.exists():
+        return pd.DataFrame(columns=COLUMNAS_PRECIOS)
+
+    try:
+        with sqlite3.connect(RUTA_DB) as conexion:
+            precios = pd.read_sql_query("SELECT * FROM precios", conexion)
+    except Exception:
+        return pd.DataFrame(columns=COLUMNAS_PRECIOS)
+
+    return normalizar_precios(precios)
+
+
+def cargar_precios_supabase():
+    """Carga precios desde Supabase si esta configurado."""
+    load_dotenv(RUTA_ENV)
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+
+    if not url or not key:
+        return pd.DataFrame(columns=COLUMNAS_PRECIOS)
+
+    try:
+        supabase = create_client(url, key)
+        registros = []
+        inicio = 0
+
+        while True:
+            fin = inicio + TAMANO_LOTE_SUPABASE - 1
+            respuesta = (
+                supabase.table("precios")
+                .select(",".join(COLUMNAS_PRECIOS))
+                .order("fecha_registro", desc=True)
+                .range(inicio, fin)
+                .execute()
+            )
+            lote = respuesta.data or []
+
+            if not lote:
+                break
+
+            registros.extend(lote)
+
+            if len(lote) < TAMANO_LOTE_SUPABASE:
+                break
+
+            inicio += TAMANO_LOTE_SUPABASE
+    except Exception:
+        return pd.DataFrame(columns=COLUMNAS_PRECIOS)
+
+    return normalizar_precios(pd.DataFrame(registros))
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def cargar_precios():
+    """Carga precios desde Supabase y usa SQLite local como respaldo."""
+    precios = cargar_precios_supabase()
+
+    if not precios.empty:
+        return precios
+
+    return cargar_precios_sqlite()
 
 
 def formatear_guaranies(precio):
