@@ -179,6 +179,23 @@ def aplicar_estilos():
                 font-weight: 750;
             }
 
+            [data-testid="stSidebar"] input,
+            [data-testid="stSidebar"] textarea,
+            [data-testid="stSidebar"] [data-baseweb="input"],
+            [data-testid="stSidebar"] [data-baseweb="input"] *,
+            [data-testid="stSidebar"] [data-baseweb="select"],
+            [data-testid="stSidebar"] [data-baseweb="select"] * {
+                background-color: #FFFFFF !important;
+                color: var(--py-text) !important;
+                caret-color: var(--py-blue) !important;
+            }
+
+            [data-testid="stSidebar"] input::placeholder,
+            [data-testid="stSidebar"] textarea::placeholder {
+                color: #667085 !important;
+                opacity: 1 !important;
+            }
+
             .block-container {
                 animation: fadeInUp 420ms ease-out both;
                 max-width: 1260px;
@@ -1686,12 +1703,16 @@ def mostrar_grafico(precios):
         xaxis_title="Precio",
         yaxis_title=None,
         legend_title_text="Supermercado",
-        margin=dict(l=12, r=24, t=12, b=12),
+        margin=dict(l=12, r=96, t=12, b=12),
         font=dict(color="#172033", size=13),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
         yaxis=dict(categoryorder="total ascending"),
+        xaxis=dict(gridcolor="#E5E7EB", zerolinecolor="#98A2B3"),
     )
     grafico.update_traces(
         textposition="outside",
+        textfont=dict(color="#172033", size=12),
         cliponaxis=False,
         marker_line_width=0,
     )
@@ -1991,6 +2012,11 @@ def mostrar_evolucion_precios(precios):
         xaxis_title="Fecha",
         yaxis_title="Precio",
         legend_title_text="Supermercado",
+        font=dict(color="#172033", size=13),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
+        xaxis=dict(gridcolor="#E5E7EB", zerolinecolor="#98A2B3"),
+        yaxis=dict(gridcolor="#E5E7EB", zerolinecolor="#98A2B3"),
     )
 
     with st.container(border=True):
