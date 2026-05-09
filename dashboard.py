@@ -1086,15 +1086,11 @@ def mostrar_salud_sistema(precios, fuente):
 
 def mostrar_logs_scraper():
     """Muestra una vista resumida de los ultimos logs locales del scraper."""
-    mostrar_encabezado_seccion(
-        "Logs del scraper",
-        "Revisá las últimas ejecuciones locales, productos sincronizados y errores recientes.",
-        "Operación",
-    )
     logs = obtener_logs_scraper(limite=8)
 
     if not logs:
-        st.info("Todavía no hay logs locales del scraper para mostrar.")
+        with st.expander("Logs del scraper"):
+            st.info("Todavía no hay logs locales del scraper para mostrar.")
         return
 
     resumen = pd.DataFrame(
@@ -1113,7 +1109,7 @@ def mostrar_logs_scraper():
         ]
     )
 
-    with st.container(border=True):
+    with st.expander("Logs técnicos del scraper"):
         st.dataframe(
             resumen,
             hide_index=True,
@@ -1613,100 +1609,43 @@ def mostrar_grafico(precios):
     )
 
     altura = max(300, min(620, len(datos_grafico) * 34))
-    especificacion = {
-        "background": "transparent",
-        "height": altura,
-        "config": {
-            "view": {"stroke": None},
-            "axis": {
-                "labelColor": "#172033",
-                "labelFontSize": 13,
-                "labelFontWeight": 650,
-                "titleColor": "#172033",
-                "titleFontSize": 13,
-                "titleFontWeight": 750,
-                "domainColor": "#98A2B3",
-                "gridColor": "#D0D5DD",
-                "tickColor": "#98A2B3",
-            },
-            "legend": {
-                "labelColor": "#172033",
-                "labelFontSize": 13,
-                "labelFontWeight": 650,
-                "titleColor": "#172033",
-                "titleFontSize": 13,
-                "titleFontWeight": 750,
-                "orient": "bottom",
-            },
-        },
-        "encoding": {
-            "x": {
-                "field": "precio",
-                "type": "quantitative",
-                "title": "Precio",
-                "axis": {
-                    "format": ",.0f",
-                    "labelColor": "#172033",
-                    "titleColor": "#172033",
-                },
-            },
-            "y": {
-                "field": "producto_grafico",
-                "type": "nominal",
-                "title": None,
-                "sort": {"field": "precio", "order": "ascending"},
-                "axis": {
-                    "labelColor": "#172033",
-                    "labelLimit": 380,
-                    "labelPadding": 10,
-                    "labelFontWeight": 700,
-                },
-            },
-        },
-        "layer": [
-            {
-                "mark": {
-                    "type": "bar",
-                    "cornerRadiusEnd": 6,
-                    "height": {"band": 0.62},
-                },
-                "encoding": {
-                    "color": {
-                        "field": "supermercado",
-                        "type": "nominal",
-                        "title": "Supermercado",
-                        "scale": {
-                            "domain": dominio_colores,
-                            "range": colores_supermercado,
-                        },
-                    },
-                    "tooltip": [
-                        {"field": "nombre_producto", "type": "nominal", "title": "Producto"},
-                        {"field": "supermercado", "type": "nominal", "title": "Supermercado"},
-                        {"field": "precio_formateado", "type": "nominal", "title": "Precio"},
-                        {"field": "fecha_registro", "type": "nominal", "title": "Fecha"},
-                    ],
-                },
-            },
-            {
-                "mark": {
-                    "type": "text",
-                    "align": "left",
-                    "baseline": "middle",
-                    "dx": 6,
-                    "color": "#0F172A",
-                    "fontSize": 13,
-                    "fontWeight": 800,
-                },
-                "encoding": {"text": {"field": "precio_formateado", "type": "nominal"}},
-            },
-        ],
-    }
-
-    st.vega_lite_chart(
+    mapa_colores = dict(zip(dominio_colores, colores_supermercado))
+    grafico = px.bar(
         datos_grafico,
-        especificacion,
-        use_container_width=True,
+        x="precio",
+        y="producto_grafico",
+        color="supermercado",
+        orientation="h",
+        text="precio_formateado",
+        color_discrete_map=mapa_colores,
+        hover_data={
+            "nombre_producto": True,
+            "supermercado": True,
+            "precio_formateado": True,
+            "fecha_registro": True,
+            "precio": False,
+            "producto_grafico": False,
+        },
+        template="plotly_white",
+    )
+    grafico.update_layout(
+        height=altura,
+        xaxis_title="Precio",
+        yaxis_title=None,
+        legend_title_text="Supermercado",
+        margin=dict(l=12, r=24, t=12, b=12),
+        font=dict(color="#172033", size=13),
+        yaxis=dict(categoryorder="total ascending"),
+    )
+    grafico.update_traces(
+        textposition="outside",
+        cliponaxis=False,
+        marker_line_width=0,
+    )
+
+    st.plotly_chart(
+        grafico,
+        width="stretch",
     )
     st.caption("Se muestran hasta 20 resultados para mantener el gráfico legible.")
 
@@ -2033,17 +1972,17 @@ def mostrar_dashboard():
 
     mostrar_metricas(precios)
     mostrar_salud_sistema(precios, fuente)
-    mostrar_logs_scraper()
     filtros = mostrar_filtros(precios)
     precios_filtrados = filtrar_precios(precios, *filtros)
     mostrar_resumen_filtros(precios_filtrados, len(precios), filtros)
 
-    mostrar_exportaciones(precios_filtrados)
-    mostrar_alertas_precios(precios_filtrados)
     mostrar_grafico(precios_filtrados)
     mostrar_comparacion_supermercados(precios_filtrados)
     mostrar_evolucion_precios(precios_filtrados)
     mostrar_tabla(precios_filtrados)
+    mostrar_alertas_precios(precios_filtrados)
+    mostrar_exportaciones(precios_filtrados)
+    mostrar_logs_scraper()
 
 
 if __name__ == "__main__":
