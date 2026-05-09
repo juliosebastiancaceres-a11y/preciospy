@@ -1707,12 +1707,25 @@ def mostrar_grafico(precios):
         font=dict(color="#172033", size=13),
         paper_bgcolor="#FFFFFF",
         plot_bgcolor="#FFFFFF",
-        yaxis=dict(categoryorder="total ascending"),
-        xaxis=dict(gridcolor="#E5E7EB", zerolinecolor="#98A2B3"),
+        legend=dict(font=dict(color="#172033"), title_font=dict(color="#172033")),
+        yaxis=dict(
+            categoryorder="total ascending",
+            color="#172033",
+            tickfont=dict(color="#172033", size=13),
+            title_font=dict(color="#172033"),
+        ),
+        xaxis=dict(
+            color="#172033",
+            gridcolor="#E5E7EB",
+            tickfont=dict(color="#172033", size=13),
+            title_font=dict(color="#172033"),
+            zerolinecolor="#98A2B3",
+        ),
     )
     grafico.update_traces(
         textposition="outside",
-        textfont=dict(color="#172033", size=12),
+        textfont_color="#172033",
+        textfont_size=12,
         cliponaxis=False,
         marker_line_width=0,
     )
