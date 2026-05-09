@@ -562,6 +562,25 @@ def aplicar_estilos():
                 padding: 0.85rem 1rem;
             }
 
+            [data-testid="stMetricValue"],
+            [data-testid="stMetricValue"] * {
+                color: var(--py-text) !important;
+                font-size: clamp(1rem, 1.7vw, 1.45rem) !important;
+                font-weight: 780 !important;
+                line-height: 1.15 !important;
+                overflow: visible !important;
+                text-overflow: clip !important;
+                white-space: normal !important;
+                word-break: break-word !important;
+            }
+
+            [data-testid="stMetricLabel"],
+            [data-testid="stMetricLabel"] * {
+                color: var(--py-muted) !important;
+                font-size: 0.75rem !important;
+                font-weight: 760 !important;
+            }
+
             [data-testid="stVegaLiteChart"] {
                 animation: fadeInUp 520ms ease-out both;
                 background: rgba(255, 255, 255, 0.88);
