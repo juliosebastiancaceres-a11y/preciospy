@@ -513,6 +513,55 @@ def aplicar_estilos():
                 color: var(--py-muted) !important;
             }
 
+            .stApp p,
+            .stApp span,
+            .stApp label,
+            .stApp div,
+            .stApp h1,
+            .stApp h2,
+            .stApp h3,
+            .stApp h4,
+            .stApp h5,
+            .stApp h6,
+            [data-testid="stMetric"],
+            [data-testid="stMetric"] *,
+            [data-testid="stMarkdownContainer"],
+            [data-testid="stMarkdownContainer"] *,
+            [data-testid="stDataFrame"],
+            [data-testid="stDataFrame"] *,
+            [data-testid="stSelectbox"],
+            [data-testid="stSelectbox"] *,
+            [data-testid="stTextInput"],
+            [data-testid="stTextInput"] *,
+            [data-testid="stDateInput"],
+            [data-testid="stDateInput"] *,
+            [data-testid="stSlider"],
+            [data-testid="stSlider"] * {
+                color: var(--py-text) !important;
+            }
+
+            .py-hero,
+            .py-hero *,
+            .py-badge,
+            .app-title,
+            .app-subtitle,
+            [data-testid="stSidebar"] .stButton > button,
+            [data-testid="stSidebar"] .stButton > button * {
+                color: var(--py-white) !important;
+            }
+
+            .py-badge.light,
+            .py-badge.light * {
+                color: var(--py-blue) !important;
+            }
+
+            [data-testid="stMetric"] {
+                background: rgba(255, 255, 255, 0.88);
+                border: 1px solid var(--py-border);
+                border-radius: 14px;
+                padding: 0.85rem 1rem;
+            }
+
             [data-testid="stVegaLiteChart"] {
                 animation: fadeInUp 520ms ease-out both;
                 background: rgba(255, 255, 255, 0.88);
