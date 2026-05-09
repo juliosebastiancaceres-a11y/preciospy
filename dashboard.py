@@ -1042,46 +1042,31 @@ def mostrar_metricas(precios):
 def mostrar_salud_sistema(precios, fuente):
     """Muestra una mini vista de salud operativa del sistema."""
     salud = obtener_salud_scraper()
-    estado_clase = "health-status-ok" if salud["ok"] else "health-status-warn"
-    errores_clase = "health-status-ok" if salud["errores"] == "Sin errores recientes" else "health-status-warn"
     tarjetas = [
-        ("Fuente actual", fuente, "Datos activos del dashboard", "health-status-ok"),
+        ("Fuente actual", fuente, "Datos activos del dashboard"),
         (
             "Última sincronización",
             obtener_ultima_sincronizacion(precios),
             "Fecha/hora más reciente en datos",
-            "health-status-ok",
         ),
         (
             "Último scraper local",
             salud["estado"],
             salud["ultimo_log"],
-            estado_clase,
         ),
         (
             "Productos sincronizados",
             salud["sincronizados"],
             salud["errores"],
-            errores_clase,
         ),
     ]
-    tarjetas_html = []
+    columnas = st.columns(4)
 
-    for etiqueta, valor, descripcion, clase in tarjetas:
-        tarjetas_html.append(
-            f"""
-            <div class="health-card">
-                <div class="health-label">{escape(str(etiqueta))}</div>
-                <div class="health-value {clase}">{escape(str(valor))}</div>
-                <div class="metric-desc">{escape(str(descripcion))}</div>
-            </div>
-            """
-        )
-
-    st.markdown(
-        f'<div class="health-grid">{"".join(tarjetas_html)}</div>',
-        unsafe_allow_html=True,
-    )
+    for columna, (etiqueta, valor, descripcion) in zip(columnas, tarjetas):
+        with columna.container(border=True):
+            st.caption(etiqueta)
+            st.metric(etiqueta, valor, label_visibility="collapsed")
+            st.caption(descripcion)
 
 
 def mostrar_logs_scraper():
