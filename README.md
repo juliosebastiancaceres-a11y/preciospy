@@ -146,6 +146,27 @@ streamlit run dashboard.py
 El dashboard lee `data/preciospy.db`. Si la base no existe o no tiene datos,
 muestra un mensaje informativo en lugar de fallar.
 
+## Desplegar en Streamlit Community Cloud
+
+1. Entrar a <https://share.streamlit.io>.
+2. Iniciar sesion con GitHub.
+3. Crear una app nueva desde este repositorio:
+   - Repository: `juliosebastiancaceres-a11y/preciospy`
+   - Branch: `main`
+   - Main file path: `dashboard.py`
+4. En `Advanced settings`, pegar los secrets:
+
+```toml
+SUPABASE_URL="https://tu-proyecto.supabase.co"
+SUPABASE_KEY="tu_clave_de_supabase"
+```
+
+5. Elegir el subdominio, por ejemplo `preciospy`, si esta disponible.
+6. Hacer deploy.
+
+No pegar secrets en archivos del repositorio. Streamlit Cloud los guarda fuera
+del codigo y el dashboard los lee desde `st.secrets`.
+
 ## Funcionalidades actuales
 
 - Filtros por supermercado, nombre y rango de precios.

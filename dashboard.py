@@ -652,11 +652,24 @@ def cargar_precios_sqlite():
     return normalizar_precios(precios)
 
 
+def obtener_configuracion_secreta(nombre):
+    """Lee configuracion desde entorno local o secretos de Streamlit Cloud."""
+    valor = os.getenv(nombre)
+
+    if valor:
+        return valor
+
+    try:
+        return st.secrets.get(nombre)
+    except Exception:
+        return None
+
+
 def cargar_precios_supabase():
     """Carga precios desde Supabase si esta configurado."""
     load_dotenv(RUTA_ENV)
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY")
+    url = obtener_configuracion_secreta("SUPABASE_URL")
+    key = obtener_configuracion_secreta("SUPABASE_KEY")
 
     if not url or not key:
         return pd.DataFrame(columns=COLUMNAS_PRECIOS)
