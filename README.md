@@ -123,6 +123,20 @@ python main.py --supermercado stock --limite-categorias 1 --limite-paginas 1 --s
 
 El scraper de Stock lee sus categorias desde `stock_categorias_urls.txt`.
 
+## Sincronizar historicos SQLite a Supabase
+
+Revisar registros locales que todavia no estan en Supabase:
+
+```bash
+python scripts/sync_sqlite_to_supabase.py
+```
+
+Subir los historicos faltantes usando `upsert` sin duplicar:
+
+```bash
+python scripts/sync_sqlite_to_supabase.py --apply
+```
+
 ## Ejecutar el dashboard
 
 ```bash
@@ -141,6 +155,11 @@ muestra un mensaje informativo en lugar de fallar.
 - Seccion de productos mas baratos usando el registro mas reciente por producto
   y supermercado.
 - Grafico de evolucion de precios por producto y supermercado.
+- Evolucion historica por producto equivalente usando matching.
+- Comparacion de productos equivalentes entre supermercados.
+- Alertas de cambios de precio y minimos historicos.
+- Exportacion CSV/Excel de productos, comparaciones, alertas e historico.
+- Vista de salud y logs recientes del scraper.
 - Tabla de productos filtrados con precio formateado en guaranies.
 - SQLite con proteccion contra duplicados por supermercado, producto y fecha.
 - Supabase opcional con `upsert` por clave natural.
@@ -164,12 +183,12 @@ avisa por consola.
 pytest
 ```
 
-Las pruebas cubren limpieza de precios, normalizacion de nombres y descarte de
-precios invalidos.
+Las pruebas cubren limpieza de precios, normalizacion de nombres, matching,
+exportaciones, alertas, logs y descarte de precios invalidos.
 
 ## Mejoras futuras
 
 - Migracion asistida para deduplicar bases SQLite antiguas.
-- Normalizacion de catalogo de productos entre supermercados.
-- Historial con alertas de subidas o bajadas relevantes.
-- UI de administracion para revisar errores de scraping.
+- Mejoras adicionales de matching para packs, marcas y variantes complejas.
+- Alertas configurables por producto o supermercado.
+- Alternativa cloud mas confiable que GitHub Actions para scraping.
