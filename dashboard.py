@@ -525,9 +525,44 @@ def aplicar_estilos():
                 color: var(--py-warning) !important;
             }
 
+            .health-card {
+                animation: fadeInUp 420ms ease-out both;
+                background: #FFFFFF;
+                border: 1px solid var(--py-border);
+                border-radius: 10px;
+                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+                min-height: 118px;
+                padding: 0.9rem 0.95rem;
+            }
+
+            .health-label {
+                color: #344054 !important;
+                font-size: 0.74rem;
+                font-weight: 760;
+                line-height: 1.2;
+                margin-bottom: 0.4rem;
+            }
+
+            .health-value {
+                color: #101828 !important;
+                font-size: clamp(1.05rem, 1.45vw, 1.35rem);
+                font-weight: 820;
+                line-height: 1.18;
+                margin-bottom: 0.45rem;
+                overflow-wrap: anywhere;
+            }
+
+            .health-desc {
+                color: #475467 !important;
+                font-size: 0.76rem;
+                font-weight: 650;
+                line-height: 1.28;
+                overflow-wrap: anywhere;
+            }
+
             [data-testid="stCaptionContainer"],
             [data-testid="stCaptionContainer"] * {
-                color: var(--py-muted) !important;
+                color: #475467 !important;
             }
 
             .stApp p,
@@ -834,6 +869,58 @@ def obtener_colores_supermercados(supermercados):
         colores.append(color)
 
     return dominio, colores
+
+
+def aplicar_estilo_plotly_legible(grafico):
+    """Refuerza contraste de textos, ejes y tooltips en graficos Plotly."""
+    color_texto = "#101828"
+    color_secundario = "#344054"
+    color_grilla = "#D0D5DD"
+
+    grafico.update_layout(
+        font=dict(color=color_texto, size=13),
+        title_font=dict(color=color_texto, size=16),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
+        legend=dict(
+            bgcolor="rgba(255,255,255,0.94)",
+            bordercolor="#E4E7EC",
+            borderwidth=1,
+            font=dict(color=color_texto, size=12),
+            title_font=dict(color=color_texto, size=12),
+        ),
+        hoverlabel=dict(
+            bgcolor="#FFFFFF",
+            bordercolor="#98A2B3",
+            font=dict(color=color_texto, size=12),
+        ),
+    )
+    grafico.update_xaxes(
+        color=color_texto,
+        gridcolor=color_grilla,
+        linecolor="#98A2B3",
+        tickcolor="#98A2B3",
+        tickfont=dict(color=color_texto, size=12),
+        title_font=dict(color=color_secundario, size=13),
+        zerolinecolor="#98A2B3",
+    )
+    grafico.update_yaxes(
+        color=color_texto,
+        gridcolor=color_grilla,
+        linecolor="#98A2B3",
+        tickcolor="#98A2B3",
+        tickfont=dict(color=color_texto, size=12),
+        title_font=dict(color=color_secundario, size=13),
+        zerolinecolor="#98A2B3",
+    )
+    grafico.update_traces(
+        hoverlabel=dict(
+            bgcolor="#FFFFFF",
+            bordercolor="#98A2B3",
+            font=dict(color=color_texto),
+        )
+    )
+    return grafico
 
 
 def filtrar_precios(
@@ -1303,15 +1390,15 @@ def mostrar_salud_sistema(precios, fuente):
     columnas = st.columns(6)
 
     for columna, (etiqueta, valor, descripcion) in zip(columnas, tarjetas):
-        with columna.container(border=True):
-            st.caption(etiqueta)
-            st.metric(etiqueta, valor, label_visibility="collapsed")
-            st.caption(descripcion)
-
-    if monitoreo["dias_faltantes"]:
-        st.warning(
-            "Hay días sin datos en el historial: "
-            f"{formatear_fechas_faltantes(monitoreo['dias_faltantes'], limite=8)}."
+        columna.markdown(
+            f"""
+            <div class="health-card">
+                <div class="health-label">{escape(str(etiqueta))}</div>
+                <div class="health-value">{escape(str(valor))}</div>
+                <div class="health-desc">{escape(str(descripcion))}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
     if supermercados_con_huecos:
@@ -1877,27 +1964,14 @@ def mostrar_grafico(precios):
         yaxis_title=None,
         legend_title_text="Supermercado",
         margin=dict(l=12, r=96, t=12, b=12),
-        font=dict(color="#172033", size=13),
-        paper_bgcolor="#FFFFFF",
-        plot_bgcolor="#FFFFFF",
-        legend=dict(font=dict(color="#172033"), title_font=dict(color="#172033")),
         yaxis=dict(
             categoryorder="total ascending",
-            color="#172033",
-            tickfont=dict(color="#172033", size=13),
-            title_font=dict(color="#172033"),
-        ),
-        xaxis=dict(
-            color="#172033",
-            gridcolor="#E5E7EB",
-            tickfont=dict(color="#172033", size=13),
-            title_font=dict(color="#172033"),
-            zerolinecolor="#98A2B3",
         ),
     )
+    aplicar_estilo_plotly_legible(grafico)
     grafico.update_traces(
         textposition="outside",
-        textfont_color="#172033",
+        textfont_color="#101828",
         textfont_size=12,
         cliponaxis=False,
         marker_line_width=0,
@@ -2198,11 +2272,12 @@ def mostrar_evolucion_precios(precios):
         xaxis_title="Fecha",
         yaxis_title="Precio",
         legend_title_text="Supermercado",
-        font=dict(color="#172033", size=13),
-        paper_bgcolor="#FFFFFF",
-        plot_bgcolor="#FFFFFF",
-        xaxis=dict(gridcolor="#E5E7EB", zerolinecolor="#98A2B3"),
-        yaxis=dict(gridcolor="#E5E7EB", zerolinecolor="#98A2B3"),
+        margin=dict(l=12, r=24, t=12, b=12),
+    )
+    aplicar_estilo_plotly_legible(grafico)
+    grafico.update_traces(
+        line=dict(width=3),
+        marker=dict(size=9, line=dict(color="#FFFFFF", width=1.5)),
     )
 
     with st.container(border=True):
