@@ -1,11 +1,13 @@
 from scraper import (
     construir_producto,
+    descargar_html,
     limpiar_precio,
     normalizar_nombre_comparable,
     normalizar_nombre_producto,
     obtener_clave_matching_producto,
     obtener_etiqueta_matching_producto,
 )
+import requests
 
 
 def test_limpiar_precio_valores_validos():
@@ -84,3 +86,38 @@ def test_construir_producto_agrega_nombre_normalizado():
 
     assert producto["nombre_producto"] == "Coca-Cola 2 Litros"
     assert producto["nombre_normalizado"] == "coca cola 2 L"
+
+
+class RespuestaFake:
+    text = "<html>ok</html>"
+
+    def raise_for_status(self):
+        return None
+
+
+class SesionIntermitente:
+    def __init__(self):
+        self.intentos = 0
+
+    def get(self, url, timeout):
+        self.intentos += 1
+
+        if self.intentos == 1:
+            raise requests.ConnectionError("conexion reiniciada")
+
+        return RespuestaFake()
+
+
+def test_descargar_html_reintenta_errores_temporales():
+    sesion = SesionIntermitente()
+
+    html = descargar_html(
+        sesion,
+        "https://example.com",
+        "Prueba",
+        intentos=2,
+        pausa_reintento=0,
+    )
+
+    assert html == "<html>ok</html>"
+    assert sesion.intentos == 2

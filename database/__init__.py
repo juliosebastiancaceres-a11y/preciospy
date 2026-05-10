@@ -107,6 +107,95 @@ def _asegurar_control_de_duplicados(cursor):
     )
 
 
+def contar_duplicados_sqlite(ruta_db=RUTA_DB):
+    """Cuenta grupos duplicados y filas sobrantes en la tabla de precios."""
+    ruta = Path(ruta_db)
+
+    if not ruta.exists():
+        return {"grupos": 0, "filas_sobrantes": 0}
+
+    with sqlite3.connect(ruta) as conexion:
+        grupos = conexion.execute(
+            """
+            SELECT COUNT(*)
+            FROM (
+                SELECT supermercado, nombre_producto, fecha_registro, COUNT(*) AS total
+                FROM precios
+                GROUP BY supermercado, nombre_producto, fecha_registro
+                HAVING total > 1
+            )
+            """
+        ).fetchone()[0]
+        filas_sobrantes = conexion.execute(
+            """
+            SELECT COALESCE(SUM(total - 1), 0)
+            FROM (
+                SELECT COUNT(*) AS total
+                FROM precios
+                GROUP BY supermercado, nombre_producto, fecha_registro
+                HAVING total > 1
+            )
+            """
+        ).fetchone()[0]
+
+    return {"grupos": int(grupos), "filas_sobrantes": int(filas_sobrantes)}
+
+
+def deduplicar_precios_sqlite(ruta_db=RUTA_DB):
+    """
+    Elimina duplicados historicos conservando el registro mas reciente.
+
+    La clave natural es supermercado, producto y fecha. Si hay varias filas para
+    esa clave, se conserva la de fecha_hora_registro mas nueva y se usa id como
+    desempate estable.
+    """
+    ruta = Path(ruta_db)
+
+    if not ruta.exists():
+        raise FileNotFoundError(f"No existe la base SQLite: {ruta}")
+
+    duplicados_antes = contar_duplicados_sqlite(ruta)
+
+    if duplicados_antes["filas_sobrantes"] == 0:
+        return 0
+
+    with sqlite3.connect(ruta) as conexion:
+        cursor = conexion.cursor()
+        cursor.execute(
+            """
+            WITH ranking AS (
+                SELECT
+                    id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY supermercado, nombre_producto, fecha_registro
+                        ORDER BY
+                            CASE
+                                WHEN fecha_hora_registro IS NULL
+                                  OR fecha_hora_registro = ''
+                                THEN 1
+                                ELSE 0
+                            END,
+                            datetime(fecha_hora_registro) DESC,
+                            fecha_hora_registro DESC,
+                            id DESC
+                    ) AS orden
+                FROM precios
+            )
+            DELETE FROM precios
+            WHERE id IN (
+                SELECT id
+                FROM ranking
+                WHERE orden > 1
+            )
+            """
+        )
+        eliminados = cursor.rowcount
+        _asegurar_control_de_duplicados(cursor)
+        conexion.commit()
+
+    return eliminados if eliminados != -1 else duplicados_antes["filas_sobrantes"]
+
+
 def preparar_producto(producto):
     """Normaliza un producto antes de persistirlo."""
     nombre = str(producto.get("nombre_producto") or "").strip()
@@ -263,7 +352,8 @@ def guardar_en_supabase(productos):
         except Exception as error:
             print(
                 "Error al hacer upsert en Supabase con columnas extendidas. "
-                "Se reintenta con columnas base."
+                "Se reintenta con columnas base. "
+                f"Detalle: {error.__class__.__name__}: {error}"
             )
             try:
                 lote_base = [_solo_columnas_base(producto) for producto in lote]
@@ -275,7 +365,7 @@ def guardar_en_supabase(productos):
             except Exception as error_base:
                 print(
                     "Error al sincronizar lote en Supabase: "
-                    f"{error_base.__class__.__name__}"
+                    f"{error_base.__class__.__name__}: {error_base}"
                 )
         finally:
             time.sleep(PAUSA_ENTRE_LOTES)

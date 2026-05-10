@@ -23,15 +23,33 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: Ejecutar scraper Stock
-        run: python3 -u main.py --supermercado stock --limite-categorias 10 --limite-paginas 2
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      - name: Ejecutar scrapers
+        run: |
+          set +e
+          estado=0
 
-      - name: Intentar scraper Superseis
-        continue-on-error: true
-        run: python3 -u main.py --supermercado superseis --limite-categorias 5 --limite-paginas 2
+          python3 -u main.py --supermercado stock --limite-categorias 10 --limite-paginas 2
+          codigo_stock=$?
+          if [ "$codigo_stock" -ne 0 ]; then
+            echo "Stock fallo con codigo $codigo_stock; se continua con Superseis."
+            estado=1
+          fi
+
+          python3 -u main.py --supermercado superseis --limite-categorias 5 --limite-paginas 2
+          codigo_superseis=$?
+          if [ "$codigo_superseis" -ne 0 ]; then
+            echo "Superseis fallo con codigo $codigo_superseis."
+            estado=1
+          fi
+
+          python3 -u scripts/sync_sqlite_to_supabase.py --apply
+          codigo_sync=$?
+          if [ "$codigo_sync" -ne 0 ]; then
+            echo "Sincronizacion final fallo con codigo $codigo_sync."
+            estado=1
+          fi
+
+          exit "$estado"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run PreciosPY scraper every day
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+Persistent=true
+RandomizedDelaySec=20min
+Unit=preciospy-scraper.service
+
+[Install]
+WantedBy=timers.target

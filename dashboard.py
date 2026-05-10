@@ -939,6 +939,143 @@ def obtener_ultima_sincronizacion(precios):
     return fecha_registro.max().strftime("%Y-%m-%d")
 
 
+def obtener_estado_monitoreo(precios, hoy=None):
+    """Resume continuidad del monitoreo entre la primera fecha registrada y hoy."""
+    if precios.empty or "fecha_registro" not in precios.columns:
+        return {
+            "primera_fecha": None,
+            "ultima_fecha": None,
+            "dias_registrados": 0,
+            "dias_calendario": 0,
+            "dias_faltantes": [],
+            "dias_sin_datos": 0,
+            "al_dia": False,
+        }
+
+    fechas = pd.to_datetime(precios["fecha_registro"], errors="coerce").dropna()
+
+    if fechas.empty:
+        return {
+            "primera_fecha": None,
+            "ultima_fecha": None,
+            "dias_registrados": 0,
+            "dias_calendario": 0,
+            "dias_faltantes": [],
+            "dias_sin_datos": 0,
+            "al_dia": False,
+        }
+
+    fechas_registradas = {fecha.date() for fecha in fechas}
+    primera_fecha = min(fechas_registradas)
+    ultima_fecha = max(fechas_registradas)
+    hoy = hoy or pd.Timestamp.today().date()
+    hoy = pd.Timestamp(hoy).date()
+    fecha_final = max(hoy, ultima_fecha)
+    rango_esperado = pd.date_range(primera_fecha, fecha_final, freq="D")
+    dias_faltantes = [
+        fecha.date()
+        for fecha in rango_esperado
+        if fecha.date() not in fechas_registradas
+    ]
+    dias_sin_datos = max((hoy - ultima_fecha).days, 0)
+
+    return {
+        "primera_fecha": primera_fecha,
+        "ultima_fecha": ultima_fecha,
+        "dias_registrados": len(fechas_registradas),
+        "dias_calendario": len(rango_esperado),
+        "dias_faltantes": dias_faltantes,
+        "dias_sin_datos": dias_sin_datos,
+        "al_dia": not dias_faltantes and dias_sin_datos == 0,
+    }
+
+
+def obtener_estado_monitoreo_supermercados(precios, hoy=None):
+    """Resume continuidad del monitoreo de forma independiente por supermercado."""
+    if (
+        precios.empty
+        or "fecha_registro" not in precios.columns
+        or "supermercado" not in precios.columns
+    ):
+        return []
+
+    datos = precios[["supermercado", "fecha_registro"]].copy()
+    datos["fecha"] = pd.to_datetime(datos["fecha_registro"], errors="coerce").dt.date
+    datos["supermercado"] = datos["supermercado"].fillna("").astype(str).str.strip()
+    datos = datos[(datos["supermercado"] != "") & datos["fecha"].notna()]
+
+    if datos.empty:
+        return []
+
+    hoy = hoy or pd.Timestamp.today().date()
+    hoy = pd.Timestamp(hoy).date()
+    estados = []
+
+    for supermercado, grupo in datos.groupby("supermercado"):
+        fechas_registradas = set(grupo["fecha"])
+        primera_fecha = min(fechas_registradas)
+        ultima_fecha = max(fechas_registradas)
+        fecha_final = max(hoy, ultima_fecha)
+        rango_esperado = pd.date_range(primera_fecha, fecha_final, freq="D")
+        dias_faltantes = [
+            fecha.date()
+            for fecha in rango_esperado
+            if fecha.date() not in fechas_registradas
+        ]
+
+        estados.append(
+            {
+                "supermercado": supermercado,
+                "primera_fecha": primera_fecha,
+                "ultima_fecha": ultima_fecha,
+                "dias_registrados": len(fechas_registradas),
+                "dias_calendario": len(rango_esperado),
+                "dias_faltantes": dias_faltantes,
+                "dias_sin_datos": max((hoy - ultima_fecha).days, 0),
+                "al_dia": not dias_faltantes and ultima_fecha >= hoy,
+            }
+        )
+
+    return sorted(estados, key=lambda estado: estado["supermercado"].lower())
+
+
+def preparar_tabla_monitoreo_supermercados(estados):
+    """Prepara una tabla legible de continuidad por supermercado."""
+    filas = []
+
+    for estado in estados:
+        filas.append(
+            {
+                "Supermercado": estado["supermercado"],
+                "Primera fecha": estado["primera_fecha"].strftime("%Y-%m-%d"),
+                "Última fecha": estado["ultima_fecha"].strftime("%Y-%m-%d"),
+                "Días con datos": estado["dias_registrados"],
+                "Días faltantes": len(estado["dias_faltantes"]),
+                "Días sin datos": estado["dias_sin_datos"],
+                "Fechas faltantes": formatear_fechas_faltantes(
+                    estado["dias_faltantes"],
+                    limite=6,
+                ),
+            }
+        )
+
+    return pd.DataFrame(filas)
+
+
+def formatear_fechas_faltantes(fechas, limite=4):
+    """Formatea fechas faltantes para mostrarlas en una tarjeta compacta."""
+    if len(fechas) == 0:
+        return "Sin faltantes"
+
+    fechas_texto = [fecha.strftime("%Y-%m-%d") for fecha in fechas[:limite]]
+    faltantes_extra = len(fechas) - limite
+
+    if faltantes_extra > 0:
+        fechas_texto.append(f"+{faltantes_extra} más")
+
+    return ", ".join(fechas_texto)
+
+
 def parsear_log_scraper(ruta_log, lineas_detalle=40):
     """Extrae resumen operativo de un archivo de log del scraper."""
     contenido = ruta_log.read_text(encoding="utf-8", errors="replace")
@@ -1127,6 +1264,14 @@ def mostrar_metricas(precios):
 def mostrar_salud_sistema(precios, fuente):
     """Muestra una mini vista de salud operativa del sistema."""
     salud = obtener_salud_scraper()
+    monitoreo = obtener_estado_monitoreo(precios)
+    monitoreo_supermercados = obtener_estado_monitoreo_supermercados(precios)
+    supermercados_con_huecos = [
+        estado
+        for estado in monitoreo_supermercados
+        if estado["dias_faltantes"] or estado["dias_sin_datos"] > 0
+    ]
+    faltantes_texto = formatear_fechas_faltantes(monitoreo["dias_faltantes"])
     tarjetas = [
         ("Fuente actual", fuente, "Datos activos del dashboard"),
         (
@@ -1144,14 +1289,42 @@ def mostrar_salud_sistema(precios, fuente):
             salud["sincronizados"],
             salud["errores"],
         ),
+        (
+            "Días sin datos",
+            monitoreo["dias_sin_datos"],
+            faltantes_texto,
+        ),
+        (
+            "Huecos por súper",
+            len(supermercados_con_huecos),
+            "Supermercados con días faltantes",
+        ),
     ]
-    columnas = st.columns(4)
+    columnas = st.columns(6)
 
     for columna, (etiqueta, valor, descripcion) in zip(columnas, tarjetas):
         with columna.container(border=True):
             st.caption(etiqueta)
             st.metric(etiqueta, valor, label_visibility="collapsed")
             st.caption(descripcion)
+
+    if monitoreo["dias_faltantes"]:
+        st.warning(
+            "Hay días sin datos en el historial: "
+            f"{formatear_fechas_faltantes(monitoreo['dias_faltantes'], limite=8)}."
+        )
+
+    if supermercados_con_huecos:
+        tabla_monitoreo = preparar_tabla_monitoreo_supermercados(
+            supermercados_con_huecos
+        )
+        with st.expander("Detalle de monitoreo por supermercado", expanded=False):
+            st.dataframe(
+                tabla_monitoreo,
+                hide_index=True,
+                width="stretch",
+                height=min(260, 86 + len(tabla_monitoreo) * 36),
+            )
 
 
 def mostrar_logs_scraper():

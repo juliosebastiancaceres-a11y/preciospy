@@ -12,7 +12,9 @@ from bs4 import BeautifulSoup
 URL_SUPERSEIS = "https://www.superseis.com.py/"
 URL_STOCK = "https://www.stock.com.py/"
 REQUEST_TIMEOUT = 20
+REQUEST_REINTENTOS = 3
 PAUSA_ENTRE_PAGINAS = 1
+PAUSA_REINTENTO = 5
 RUTA_CATEGORIAS_STOCK = (
     Path(__file__).resolve().parent.parent / "stock_categorias_urls.txt"
 )
@@ -419,15 +421,37 @@ def extraer_productos_stock(html, categoria=None, url_categoria=URL_STOCK):
     return productos
 
 
-def descargar_html(sesion, url, contexto):
+def descargar_html(
+    sesion,
+    url,
+    contexto,
+    intentos=REQUEST_REINTENTOS,
+    pausa_reintento=PAUSA_REINTENTO,
+):
     """Descarga una pagina y retorna HTML, o None si falla."""
-    try:
-        respuesta = sesion.get(url, timeout=REQUEST_TIMEOUT)
-        respuesta.raise_for_status()
-        return respuesta.text
-    except requests.RequestException as error:
-        print(f"Error al scrapear {contexto}: {error}")
-        return None
+    intentos = max(1, int(intentos or 1))
+    ultimo_error = None
+
+    for intento in range(1, intentos + 1):
+        try:
+            respuesta = sesion.get(url, timeout=REQUEST_TIMEOUT)
+            respuesta.raise_for_status()
+            return respuesta.text
+        except requests.HTTPError as error:
+            print(f"Error al scrapear {contexto}: {error}")
+            return None
+        except requests.RequestException as error:
+            ultimo_error = error
+            if intento < intentos:
+                print(
+                    f"Error temporal al scrapear {contexto} "
+                    f"(intento {intento}/{intentos}): {error}"
+                )
+                time.sleep(pausa_reintento)
+                continue
+
+    print(f"Error al scrapear {contexto}: {ultimo_error}")
+    return None
 
 
 def scrapear_superseis():

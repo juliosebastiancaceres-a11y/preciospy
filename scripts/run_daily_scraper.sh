@@ -7,6 +7,7 @@ PROJECT_DIR="/home/juliosc/preciospy"
 LOG_DIR="$PROJECT_DIR/logs"
 TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
 LOG_FILE="$LOG_DIR/scraper-$TIMESTAMP.log"
+PYTHON_BIN="$PROJECT_DIR/.venv/bin/python"
 
 STOCK_LIMITE_CATEGORIAS="${STOCK_LIMITE_CATEGORIAS:-10}"
 STOCK_LIMITE_PAGINAS="${STOCK_LIMITE_PAGINAS:-2}"
@@ -15,6 +16,10 @@ SUPERSEIS_LIMITE_PAGINAS="${SUPERSEIS_LIMITE_PAGINAS:-2}"
 
 mkdir -p "$LOG_DIR"
 cd "$PROJECT_DIR" || exit 1
+
+if [ ! -x "$PYTHON_BIN" ]; then
+    PYTHON_BIN="$(command -v python3)"
+fi
 
 estado=0
 
@@ -41,20 +46,25 @@ run_scraper() {
     echo "PreciosPY scraper diario"
     echo "Log: $LOG_FILE"
     echo "Fecha: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+    echo "Python: $PYTHON_BIN"
 
     run_scraper \
         "Stock" \
-        python3 -u main.py \
+        "$PYTHON_BIN" -u main.py \
             --supermercado stock \
             --limite-categorias "$STOCK_LIMITE_CATEGORIAS" \
             --limite-paginas "$STOCK_LIMITE_PAGINAS"
 
     run_scraper \
         "Superseis" \
-        python3 -u main.py \
+        "$PYTHON_BIN" -u main.py \
             --supermercado superseis \
             --limite-categorias "$SUPERSEIS_LIMITE_CATEGORIAS" \
             --limite-paginas "$SUPERSEIS_LIMITE_PAGINAS"
+
+    run_scraper \
+        "Sincronizar faltantes SQLite -> Supabase" \
+        "$PYTHON_BIN" -u scripts/sync_sqlite_to_supabase.py --apply
 
     echo
     echo "Estado final: $estado"

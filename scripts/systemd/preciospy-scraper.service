@@ -1,0 +1,7 @@
+[Unit]
+Description=PreciosPY daily scraper
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/juliosc/preciospy
+ExecStart=/home/juliosc/preciospy/scripts/run_daily_scraper.sh
