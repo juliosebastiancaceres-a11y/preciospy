@@ -250,6 +250,30 @@ def preparar_productos(productos):
     return productos_limpios
 
 
+def clave_natural_producto(producto):
+    """Retorna la clave natural usada para evitar duplicados."""
+    return tuple(str(producto.get(columna) or "").strip() for columna in CLAVE_UNICA)
+
+
+def deduplicar_productos_por_clave(productos):
+    """Quita duplicados en memoria antes de hacer upsert por clave natural."""
+    productos_por_clave = {}
+
+    for producto in productos:
+        clave = clave_natural_producto(producto)
+
+        if not all(clave):
+            continue
+
+        productos_por_clave[clave] = producto
+
+    duplicados = len(productos) - len(productos_por_clave)
+    if duplicados:
+        print(f"Productos duplicados omitidos antes de Supabase: {duplicados}")
+
+    return list(productos_por_clave.values())
+
+
 def guardar_productos(productos):
     """Guarda productos en SQLite usando la restriccion de duplicados."""
     inicializar_db()
@@ -334,7 +358,7 @@ def guardar_en_supabase(productos):
     if supabase is None:
         return 0
 
-    productos_limpios = preparar_productos(productos)
+    productos_limpios = deduplicar_productos_por_clave(preparar_productos(productos))
     if not productos_limpios:
         print("No hay productos validos para enviar a Supabase.")
         return 0

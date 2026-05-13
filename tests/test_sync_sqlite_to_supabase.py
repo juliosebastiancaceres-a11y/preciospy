@@ -1,3 +1,4 @@
+from database import deduplicar_productos_por_clave
 from scripts.sync_sqlite_to_supabase import (
     clave_producto,
     detectar_faltantes,
@@ -58,6 +59,33 @@ def test_detectar_faltantes_respeta_limite():
     faltantes = detectar_faltantes(productos, set(), limite=1)
 
     assert faltantes == [productos[0]]
+
+
+def test_deduplicar_productos_por_clave_conserva_ultimo_registro():
+    productos = [
+        {
+            "supermercado": "Stock",
+            "nombre_producto": "Aceite 900ml",
+            "fecha_registro": "2026-05-13",
+            "precio": 10000,
+        },
+        {
+            "supermercado": "Stock",
+            "nombre_producto": "Aceite 900ml",
+            "fecha_registro": "2026-05-13",
+            "precio": 10500,
+        },
+        {
+            "supermercado": "Superseis",
+            "nombre_producto": "Aceite 900ml",
+            "fecha_registro": "2026-05-13",
+            "precio": 11000,
+        },
+    ]
+
+    deduplicados = deduplicar_productos_por_clave(productos)
+
+    assert deduplicados == [productos[1], productos[2]]
 
 
 def test_sincronizar_faltantes_modo_revision_no_envia(monkeypatch):
