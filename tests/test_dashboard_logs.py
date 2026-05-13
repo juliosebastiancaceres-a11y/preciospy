@@ -66,6 +66,35 @@ Estado final: 1
     assert log["ok"] is False
 
 
+def test_parsear_log_scraper_no_muestra_error_recuperado_como_fallo(tmp_path):
+    ruta_log = tmp_path / "scraper-2026-05-13_11-10-22.log"
+    ruta_log.write_text(
+        """
+PreciosPY scraper diario
+Fecha: 2026-05-13 11:10:22 -03
+Inicio: 2026-05-13 11:10:22 -03
+Error al sincronizar lote en Supabase: APIError
+Productos sincronizados con Supabase: 200
+Fin: 2026-05-13 11:11:24 -03
+Codigo de salida: 0
+Inicio: 2026-05-13 11:12:00 -03
+Historicos enviados a Supabase: 233
+Fin: 2026-05-13 11:12:13 -03
+Codigo de salida: 0
+Estado final: 0
+""".strip(),
+        encoding="utf-8",
+    )
+
+    log = parsear_log_scraper(ruta_log)
+
+    assert log["estado"] == "OK (0)"
+    assert log["errores"] == 0
+    assert log["advertencias"] == 1
+    assert log["ultimo_error"] == "Sin errores críticos (1 aviso(s) recuperados)"
+    assert log["ok"] is True
+
+
 def test_obtener_logs_scraper_respeta_limite(tmp_path, monkeypatch):
     for indice in range(3):
         ruta_log = tmp_path / f"scraper-2026-05-08_0{indice}-00-00.log"

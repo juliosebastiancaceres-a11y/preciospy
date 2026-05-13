@@ -1,9 +1,12 @@
 import pandas as pd
 
 from dashboard import (
+    filtrar_evolucion_supermercados,
     normalizar_precios,
+    obtener_configuracion_evolucion,
     preparar_evolucion_producto,
     preparar_opciones_evolucion,
+    preparar_resumen_evolucion,
 )
 
 
@@ -69,3 +72,36 @@ def test_preparar_evolucion_producto_retorna_vacio_si_no_hay_clave():
     evolucion = preparar_evolucion_producto(_precios_equivalentes(), "")
 
     assert evolucion.empty
+
+
+def test_filtrar_evolucion_supermercados_limita_series():
+    evolucion = preparar_evolucion_producto(_precios_equivalentes(), "coca cola 2 L")
+
+    filtrada = filtrar_evolucion_supermercados(evolucion, ["Stock"])
+
+    assert set(filtrada["supermercado"]) == {"Stock"}
+    assert len(filtrada) == 2
+
+
+def test_obtener_configuracion_evolucion_prepara_modo_comparar():
+    evolucion = preparar_evolucion_producto(_precios_equivalentes(), "coca cola 2 L")
+
+    filtrada, comparar = obtener_configuracion_evolucion(
+        evolucion,
+        "Comparar supermercados",
+        ["Stock", "Superseis"],
+    )
+
+    assert comparar is True
+    assert set(filtrada["supermercado"]) == {"Stock", "Superseis"}
+
+
+def test_preparar_resumen_evolucion_calcula_variacion():
+    evolucion = preparar_evolucion_producto(_precios_equivalentes(), "coca cola 2 L")
+    resumen = preparar_resumen_evolucion(evolucion)
+    stock = resumen[resumen["Supermercado"] == "Stock"].iloc[0]
+
+    assert stock["Último precio"] == "₲ 12.200"
+    assert stock["Precio mínimo"] == "₲ 12.000"
+    assert stock["Variación"] == "+₲ 200"
+    assert stock["Variación %"] == "+1.7%"

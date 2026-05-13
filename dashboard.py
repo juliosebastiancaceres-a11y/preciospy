@@ -196,6 +196,48 @@ def aplicar_estilos():
                 opacity: 1 !important;
             }
 
+            [data-testid="stSelectbox"] [data-baseweb="select"],
+            [data-testid="stMultiSelect"] [data-baseweb="select"],
+            [data-baseweb="select"],
+            [data-baseweb="select"] > div,
+            [data-baseweb="select"] input,
+            [data-baseweb="input"],
+            [data-baseweb="input"] input {
+                background-color: #FFFFFF !important;
+                border-color: #D0D5DD !important;
+                color: #101828 !important;
+                -webkit-text-fill-color: #101828 !important;
+                caret-color: var(--py-blue) !important;
+            }
+
+            [data-baseweb="select"] svg,
+            [data-testid="stSelectbox"] svg,
+            [data-testid="stMultiSelect"] svg {
+                color: #344054 !important;
+                fill: #344054 !important;
+            }
+
+            [data-baseweb="popover"],
+            [data-baseweb="menu"],
+            [role="listbox"] {
+                background-color: #FFFFFF !important;
+                border-color: #D0D5DD !important;
+                color: #101828 !important;
+            }
+
+            [data-baseweb="option"],
+            [data-baseweb="option"] *,
+            [role="option"],
+            [role="option"] * {
+                background-color: #FFFFFF !important;
+                color: #101828 !important;
+            }
+
+            [data-baseweb="option"]:hover,
+            [role="option"]:hover {
+                background-color: #EAF2FF !important;
+            }
+
             .block-container {
                 animation: fadeInUp 420ms ease-out both;
                 max-width: 1260px;
@@ -1180,7 +1222,7 @@ def parsear_log_scraper(ruta_log, lineas_detalle=40):
         int(valor)
         for valor in re.findall(r"Productos sincronizados con Supabase:\s*(\d+)", contenido)
     )
-    errores = [
+    errores_detectados = [
         linea.strip()
         for linea in lineas
         if "Error " in linea or "Traceback" in linea or "Client Error" in linea
@@ -1189,7 +1231,16 @@ def parsear_log_scraper(ruta_log, lineas_detalle=40):
     inicio_match = re.search(r"Inicio:\s*(.+)", contenido)
     fin_matches = re.findall(r"Fin:\s*(.+)", contenido)
     estado = estado_match.group(1) if estado_match else "desconocido"
-    ok = estado == "0" and not errores and all(codigo == 0 for codigo in codigos)
+    ok = estado == "0" and all(codigo == 0 for codigo in codigos)
+    errores = [] if ok else errores_detectados
+    advertencias = errores_detectados if ok else []
+
+    if errores:
+        ultimo_error = errores[-1][:180]
+    elif advertencias:
+        ultimo_error = f"Sin errores críticos ({len(advertencias)} aviso(s) recuperados)"
+    else:
+        ultimo_error = "Sin errores"
 
     return {
         "archivo": ruta_log.name,
@@ -1201,7 +1252,8 @@ def parsear_log_scraper(ruta_log, lineas_detalle=40):
         "sqlite": guardados_sqlite,
         "supabase": sincronizados,
         "errores": len(errores),
-        "ultimo_error": errores[-1][:180] if errores else "Sin errores",
+        "advertencias": len(advertencias),
+        "ultimo_error": ultimo_error,
         "detalle": "\n".join(lineas[-lineas_detalle:]),
         "ok": ok,
     }
@@ -1227,6 +1279,7 @@ def obtener_logs_scraper(limite=5):
                     "sqlite": 0,
                     "supabase": 0,
                     "errores": 1,
+                    "advertencias": 0,
                     "ultimo_error": str(error),
                     "detalle": "",
                     "ok": False,
@@ -2219,6 +2272,63 @@ def preparar_evolucion_producto(precios, clave_matching):
     return agrupado
 
 
+def filtrar_evolucion_supermercados(agrupado, supermercados):
+    """Filtra la evolucion por supermercados seleccionados."""
+    if agrupado.empty or not supermercados:
+        return pd.DataFrame(columns=agrupado.columns)
+
+    return agrupado[agrupado["supermercado"].isin(supermercados)].copy()
+
+
+def preparar_resumen_evolucion(agrupado):
+    """Prepara indicadores utiles por supermercado para la evolucion."""
+    if agrupado.empty:
+        return pd.DataFrame()
+
+    filas = []
+
+    for supermercado, grupo in agrupado.groupby("supermercado"):
+        grupo = grupo.sort_values("fecha")
+        primero = grupo.iloc[0]
+        ultimo = grupo.iloc[-1]
+        precio_inicial = primero["precio"]
+        precio_final = ultimo["precio"]
+        variacion = precio_final - precio_inicial
+        variacion_porcentaje = (
+            (variacion / precio_inicial) * 100 if precio_inicial else 0
+        )
+
+        filas.append(
+            {
+                "Supermercado": supermercado,
+                "Último precio": formatear_guaranies(precio_final),
+                "Precio mínimo": formatear_guaranies(grupo["precio"].min()),
+                "Precio máximo": formatear_guaranies(grupo["precio"].max()),
+                "Variación": formatear_variacion_guaranies(variacion),
+                "Variación %": f"{variacion_porcentaje:+.1f}%",
+                "Días": grupo["fecha"].nunique(),
+                "Última fecha": ultimo["fecha"].date().isoformat(),
+            }
+        )
+
+    return pd.DataFrame(filas).sort_values("Supermercado")
+
+
+def obtener_configuracion_evolucion(agrupado, modo, seleccion):
+    """Devuelve datos y bandera de comparacion para el grafico de evolucion."""
+    supermercados = sorted(agrupado["supermercado"].dropna().unique())
+
+    if modo == "Comparar supermercados":
+        seleccionados = seleccion or supermercados
+        return filtrar_evolucion_supermercados(agrupado, seleccionados), True
+
+    seleccionado = seleccion or (supermercados[0] if supermercados else None)
+    if not seleccionado:
+        return pd.DataFrame(columns=agrupado.columns), False
+
+    return filtrar_evolucion_supermercados(agrupado, [seleccionado]), False
+
+
 def mostrar_evolucion_precios(precios):
     """Muestra la evolucion historica de un producto por supermercado."""
     mostrar_encabezado_seccion(
@@ -2249,30 +2359,85 @@ def mostrar_evolucion_precios(precios):
     clave_seleccionada = etiquetas[etiqueta_seleccionada]
     agrupado = preparar_evolucion_producto(precios, clave_seleccionada)
 
-    if agrupado["fecha"].nunique() < 2:
+    if agrupado.empty or agrupado["fecha"].nunique() < 2:
         st.info("No hay suficientes datos históricos para mostrar una evolución.")
         return
 
-    grafico = px.line(
+    supermercados_disponibles = sorted(agrupado["supermercado"].dropna().unique())
+    with st.container(border=True):
+        columnas_control = st.columns([1.1, 1.4])
+        modo_evolucion = columnas_control[0].radio(
+            "Vista del gráfico",
+            ["Ver un supermercado", "Comparar supermercados"],
+            horizontal=True,
+            key="modo_evolucion_precios",
+        )
+
+        if modo_evolucion == "Comparar supermercados":
+            seleccion_supermercados = columnas_control[1].multiselect(
+                "Supermercados a comparar",
+                supermercados_disponibles,
+                default=supermercados_disponibles,
+                key="supermercados_evolucion_comparar",
+            )
+        else:
+            seleccion_supermercados = columnas_control[1].selectbox(
+                "Supermercado para ver",
+                supermercados_disponibles,
+                key="supermercado_evolucion_unico",
+            )
+
+    evolucion_filtrada, comparar = obtener_configuracion_evolucion(
         agrupado,
-        x="fecha",
-        y="precio",
-        color="supermercado",
-        markers=True,
-        hover_data={
+        modo_evolucion,
+        seleccion_supermercados,
+    )
+
+    if evolucion_filtrada.empty:
+        st.info("Seleccioná al menos un supermercado para mostrar la evolución.")
+        return
+
+    if evolucion_filtrada["fecha"].nunique() < 2:
+        st.info("La selección actual no tiene suficientes fechas para graficar.")
+        return
+
+    altura_grafico = 430 if comparar else 380
+    opciones_grafico = {
+        "data_frame": evolucion_filtrada,
+        "x": "fecha",
+        "y": "precio",
+        "color": "supermercado",
+        "markers": True,
+        "hover_data": {
             "producto": True,
             "precio_formateado": True,
             "registros": True,
             "fecha": "|%Y-%m-%d",
             "precio": False,
         },
-        template="plotly_white",
+        "template": "plotly_white",
+        "height": altura_grafico,
+    }
+
+    if comparar:
+        opciones_grafico.update(
+            {
+                "line_dash": "supermercado",
+                "symbol": "supermercado",
+            }
+        )
+
+    grafico = px.line(
+        **opciones_grafico,
     )
     grafico.update_layout(
         xaxis_title="Fecha",
         yaxis_title="Precio",
         legend_title_text="Supermercado",
         margin=dict(l=12, r=24, t=12, b=12),
+        title=None,
+        showlegend=comparar,
+        hovermode="x unified" if comparar else "closest",
     )
     aplicar_estilo_plotly_legible(grafico)
     grafico.update_traces(
@@ -2282,6 +2447,14 @@ def mostrar_evolucion_precios(precios):
 
     with st.container(border=True):
         st.plotly_chart(grafico, width="stretch")
+        tabla_resumen = preparar_resumen_evolucion(evolucion_filtrada)
+        if not tabla_resumen.empty:
+            st.dataframe(
+                tabla_resumen,
+                hide_index=True,
+                width="stretch",
+                height=min(260, 86 + len(tabla_resumen) * 36),
+            )
 
 
 def mostrar_tabla(precios):
