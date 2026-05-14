@@ -13,6 +13,9 @@ URL_SUPERSEIS = "https://www.superseis.com.py/"
 URL_STOCK = "https://www.stock.com.py/"
 URL_LOS_JARDINES = "https://www.losjardinesonline.com.py/"
 URL_CASA_RICA = "https://www.casarica.com.py/"
+URL_BIGGIE = "https://www.biggie.com.py/"
+URL_API_BIGGIE = "https://api.app.biggie.com.py/api/"
+TAMANO_PAGINA_BIGGIE = 24
 REQUEST_TIMEOUT = 20
 REQUEST_REINTENTOS = 3
 PAUSA_ENTRE_PAGINAS = 1
@@ -180,6 +183,13 @@ def limpiar_precio_stock(precio_texto):
 def normalizar_nombre_producto(nombre):
     """Normaliza espacios y evita nombres vacios."""
     return " ".join(str(nombre or "").split()).strip()
+
+
+def crear_slug(texto):
+    """Crea un slug simple compatible con URLs de catalogo."""
+    texto = _quitar_acentos(normalizar_nombre_producto(texto)).lower()
+    texto = re.sub(r"[^a-z0-9]+", "-", texto)
+    return texto.strip("-")
 
 
 def _quitar_acentos(texto):
@@ -619,6 +629,72 @@ def extraer_productos_casa_rica(
     )
 
 
+def extraer_categorias_biggie(datos):
+    """Extrae categorias Market desde la respuesta de la API de Biggie."""
+    categorias = []
+
+    for categoria in (datos or {}).get("items", []):
+        nombre = normalizar_nombre_producto(categoria.get("name"))
+        slug = normalizar_nombre_producto(categoria.get("slug"))
+
+        if nombre and slug:
+            categorias.append((slug, nombre))
+
+    return categorias
+
+
+def _precio_biggie(articulo):
+    precio_oferta = articulo.get("priceSaleOffer")
+
+    if articulo.get("isOnOffer") and precio_oferta:
+        return precio_oferta
+
+    return articulo.get("price")
+
+
+def _url_producto_biggie(articulo):
+    nombre = normalizar_nombre_producto(articulo.get("name"))
+    codigo = normalizar_nombre_producto(articulo.get("code") or articulo.get("id"))
+    slug = crear_slug(nombre)
+
+    if codigo:
+        slug = f"{slug}-{codigo}" if slug else codigo
+
+    return urljoin(URL_BIGGIE, f"item/{slug}") if slug else None
+
+
+def extraer_productos_biggie(datos, categoria=None):
+    """Extrae productos desde una respuesta JSON de la API de Biggie."""
+    productos = []
+
+    for articulo in (datos or {}).get("items", []):
+        try:
+            familia = articulo.get("family") or {}
+            clasificacion = familia.get("classification") or {}
+            categoria_producto = normalizar_nombre_producto(
+                clasificacion.get("name")
+            ) or categoria
+
+            producto = construir_producto(
+                supermercado="Biggie",
+                nombre=articulo.get("name"),
+                precio_texto=_precio_biggie(articulo),
+                categoria=categoria_producto,
+                url_producto=_url_producto_biggie(articulo),
+                unidad=normalizar_nombre_producto(
+                    articulo.get("unitOfMeasure")
+                ).lower()
+                or "unidad",
+            )
+
+            if producto:
+                productos.append(producto)
+        except Exception as error:
+            print(f"Producto de Biggie omitido por error de lectura: {error}")
+
+    return productos
+
+
 def descargar_html(
     sesion,
     url,
@@ -637,6 +713,43 @@ def descargar_html(
             return respuesta.text
         except requests.HTTPError as error:
             print(f"Error al scrapear {contexto}: {error}")
+            return None
+        except requests.RequestException as error:
+            ultimo_error = error
+            if intento < intentos:
+                print(
+                    f"Error temporal al scrapear {contexto} "
+                    f"(intento {intento}/{intentos}): {error}"
+                )
+                time.sleep(pausa_reintento)
+                continue
+
+    print(f"Error al scrapear {contexto}: {ultimo_error}")
+    return None
+
+
+def descargar_json(
+    sesion,
+    url,
+    contexto,
+    params=None,
+    intentos=REQUEST_REINTENTOS,
+    pausa_reintento=PAUSA_REINTENTO,
+):
+    """Descarga JSON y retorna dict/list, o None si falla."""
+    intentos = max(1, int(intentos or 1))
+    ultimo_error = None
+
+    for intento in range(1, intentos + 1):
+        try:
+            respuesta = sesion.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            respuesta.raise_for_status()
+            return respuesta.json()
+        except requests.HTTPError as error:
+            print(f"Error al scrapear {contexto}: {error}")
+            return None
+        except ValueError as error:
+            print(f"Error al leer JSON de {contexto}: {error}")
             return None
         except requests.RequestException as error:
             ultimo_error = error
@@ -898,6 +1011,89 @@ def scrapear_casa_rica(limite_categorias=None, limite_paginas=250):
             print(
                 f"Casa Rica - {nombre_categoria}: {len(productos_categoria)} productos "
                 f"en {paginas_con_productos} paginas"
+            )
+
+    return todos_los_productos
+
+
+def leer_categorias_biggie(sesion):
+    """Lee categorias de Biggie desde su API publica."""
+    datos = descargar_json(
+        sesion,
+        urljoin(URL_API_BIGGIE, "classifications/web"),
+        "Biggie categorias",
+        params={"take": -1, "storeType": "Market"},
+    )
+
+    if not datos:
+        return []
+
+    return extraer_categorias_biggie(datos)
+
+
+def scrapear_biggie(limite_categorias=None, limite_paginas=250):
+    """Scrapea productos de Biggie usando su API de articulos."""
+    todos_los_productos = []
+
+    with crear_sesion() as sesion:
+        categorias = leer_categorias_biggie(sesion)
+
+        if limite_categorias is not None:
+            categorias = categorias[:limite_categorias]
+
+        for slug_categoria, nombre_categoria in categorias:
+            productos_categoria = []
+            paginas_con_productos = 0
+            total_reportado = None
+
+            for pagina in range(1, limite_paginas + 1):
+                skip = (pagina - 1) * TAMANO_PAGINA_BIGGIE
+                datos = descargar_json(
+                    sesion,
+                    urljoin(URL_API_BIGGIE, "articles"),
+                    f"Biggie {nombre_categoria}, pagina {pagina}",
+                    params={
+                        "take": TAMANO_PAGINA_BIGGIE,
+                        "skip": skip,
+                        "classificationName": slug_categoria,
+                    },
+                )
+
+                if not datos:
+                    break
+
+                total_reportado = datos.get("count", total_reportado)
+                productos = extraer_productos_biggie(
+                    datos,
+                    categoria=nombre_categoria,
+                )
+
+                if not productos:
+                    break
+
+                productos_categoria.extend(productos)
+                paginas_con_productos += 1
+                imprimir_progreso_scraper(
+                    "Biggie",
+                    nombre_categoria,
+                    pagina,
+                    len(productos_categoria),
+                )
+
+                if total_reportado is not None and len(productos_categoria) >= int(
+                    total_reportado
+                ):
+                    break
+
+                time.sleep(PAUSA_ENTRE_PAGINAS)
+
+            todos_los_productos.extend(productos_categoria)
+            detalle_total = (
+                f" de {total_reportado}" if total_reportado is not None else ""
+            )
+            print(
+                f"Biggie - {nombre_categoria}: {len(productos_categoria)}"
+                f"{detalle_total} productos en {paginas_con_productos} paginas"
             )
 
     return todos_los_productos

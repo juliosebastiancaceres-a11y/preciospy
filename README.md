@@ -115,6 +115,7 @@ python main.py --supermercado superseis
 python main.py --supermercado stock
 python main.py --supermercado losjardines
 python main.py --supermercado casarica
+python main.py --supermercado biggie
 ```
 
 Prueba corta sin enviar datos a Supabase:
@@ -129,6 +130,8 @@ El scraper de Los Jardines recorre las paginas del catalogo con el formato
 al limite configurado.
 El scraper de Casa Rica usa el mismo formato de paginacion del catalogo y recorre
 las categorias principales configuradas.
+El scraper de Biggie usa su API publica de categorias y articulos, paginando con
+`take` y `skip` hasta cubrir el total reportado por cada categoria.
 
 ## Sincronizar historicos SQLite a Supabase
 

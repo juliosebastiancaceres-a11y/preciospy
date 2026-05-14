@@ -17,6 +17,8 @@ LOS_JARDINES_LIMITE_CATEGORIAS="${LOS_JARDINES_LIMITE_CATEGORIAS:-18}"
 LOS_JARDINES_LIMITE_PAGINAS="${LOS_JARDINES_LIMITE_PAGINAS:-250}"
 CASA_RICA_LIMITE_CATEGORIAS="${CASA_RICA_LIMITE_CATEGORIAS:-24}"
 CASA_RICA_LIMITE_PAGINAS="${CASA_RICA_LIMITE_PAGINAS:-250}"
+BIGGIE_LIMITE_CATEGORIAS="${BIGGIE_LIMITE_CATEGORIAS:-21}"
+BIGGIE_LIMITE_PAGINAS="${BIGGIE_LIMITE_PAGINAS:-250}"
 
 mkdir -p "$LOG_DIR"
 cd "$PROJECT_DIR" || exit 1
@@ -79,6 +81,13 @@ run_scraper() {
             --supermercado casarica \
             --limite-categorias "$CASA_RICA_LIMITE_CATEGORIAS" \
             --limite-paginas "$CASA_RICA_LIMITE_PAGINAS"
+
+    run_scraper \
+        "Biggie" \
+        "$PYTHON_BIN" -u main.py \
+            --supermercado biggie \
+            --limite-categorias "$BIGGIE_LIMITE_CATEGORIAS" \
+            --limite-paginas "$BIGGIE_LIMITE_PAGINAS"
 
     run_scraper \
         "Sincronizar faltantes SQLite -> Supabase" \

@@ -1,8 +1,11 @@
 from scraper import (
+    crear_slug,
     construir_url_pagina_casa_rica,
     construir_url_pagina_los_jardines,
     construir_producto,
     descargar_html,
+    extraer_categorias_biggie,
+    extraer_productos_biggie,
     extraer_productos_casa_rica,
     extraer_productos_los_jardines,
     imprimir_progreso_scraper,
@@ -31,6 +34,10 @@ def test_limpiar_precio_valores_invalidos():
 def test_normalizar_nombre_producto():
     assert normalizar_nombre_producto("  Arroz   tipo 1  ") == "Arroz tipo 1"
     assert normalizar_nombre_producto(None) == ""
+
+
+def test_crear_slug():
+    assert crear_slug("Lácteos y Bebidas 1 L") == "lacteos-y-bebidas-1-l"
 
 
 def test_normalizar_nombre_comparable_litros():
@@ -186,6 +193,53 @@ def test_extraer_productos_casa_rica_desde_html():
     assert (
         productos[0]["url_producto"]
         == "https://www.casarica.com.py/aceite-de-oliva-huasco-extra-virgen-500ml-p34561"
+    )
+
+
+def test_extraer_categorias_biggie_desde_json():
+    datos = {
+        "items": [
+            {"name": " Almacén   ", "slug": "almacen"},
+            {"name": "", "slug": "sin-nombre"},
+            {"name": "Bebidas", "slug": ""},
+        ]
+    }
+
+    assert extraer_categorias_biggie(datos) == [("almacen", "Almacén")]
+
+
+def test_extraer_productos_biggie_desde_json():
+    datos = {
+        "items": [
+            {
+                "id": "abc",
+                "code": "7840061000051",
+                "name": "Huevos Yemita Tipo A de 30 Unidades.",
+                "price": 36500,
+                "priceSaleOffer": 32000,
+                "isOnOffer": True,
+                "unitOfMeasure": "Unidades",
+                "family": {
+                    "classification": {
+                        "name": "Almacén                                ",
+                    }
+                },
+            }
+        ],
+        "count": 1,
+    }
+
+    productos = extraer_productos_biggie(datos, categoria="Almacen")
+
+    assert len(productos) == 1
+    assert productos[0]["supermercado"] == "Biggie"
+    assert productos[0]["nombre_producto"] == "Huevos Yemita Tipo A de 30 Unidades."
+    assert productos[0]["precio"] == 32000
+    assert productos[0]["categoria"] == "Almacén"
+    assert productos[0]["unidad"] == "unidades"
+    assert (
+        productos[0]["url_producto"]
+        == "https://www.biggie.com.py/item/huevos-yemita-tipo-a-de-30-unidades-7840061000051"
     )
 
 

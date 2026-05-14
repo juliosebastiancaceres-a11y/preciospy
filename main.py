@@ -3,6 +3,7 @@ import sys
 
 from database import guardar_en_supabase, guardar_productos, inicializar_db
 from scraper import (
+    scrapear_biggie,
     scrapear_casa_rica,
     scrapear_los_jardines,
     scrapear_stock,
@@ -15,7 +16,14 @@ def parsear_argumentos():
     parser = argparse.ArgumentParser(description="Scraper de precios de supermercados")
     parser.add_argument(
         "--supermercado",
-        choices=("todos", "superseis", "stock", "losjardines", "casarica"),
+        choices=(
+            "todos",
+            "superseis",
+            "stock",
+            "losjardines",
+            "casarica",
+            "biggie",
+        ),
         default="todos",
         help="Supermercado a scrapear. Por defecto corre todos.",
     )
@@ -68,6 +76,14 @@ def obtener_productos(supermercado, limite_categorias=None, limite_paginas=None)
     if supermercado in ("todos", "casarica"):
         productos.extend(
             scrapear_casa_rica(
+                limite_categorias=limite_categorias,
+                limite_paginas=limite_paginas or 250,
+            )
+        )
+
+    if supermercado in ("todos", "biggie"):
+        productos.extend(
+            scrapear_biggie(
                 limite_categorias=limite_categorias,
                 limite_paginas=limite_paginas or 250,
             )
