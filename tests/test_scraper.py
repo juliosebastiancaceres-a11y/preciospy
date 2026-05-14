@@ -3,6 +3,7 @@ from scraper import (
     construir_producto,
     descargar_html,
     extraer_productos_los_jardines,
+    imprimir_progreso_scraper,
     limpiar_precio,
     normalizar_nombre_comparable,
     normalizar_nombre_producto,
@@ -136,6 +137,17 @@ def test_extraer_productos_los_jardines_desde_html():
         productos[0]["url_producto"]
         == "https://www.losjardinesonline.com.py/arroz-sun-tipo-ii-azul-1-k-p12657"
     )
+
+
+def test_imprimir_progreso_scraper_respeta_intervalo(capsys):
+    imprimir_progreso_scraper("Los Jardines", "Almacen", 24, 480)
+    assert capsys.readouterr().out == ""
+
+    imprimir_progreso_scraper("Los Jardines", "Almacen", 25, 500)
+    salida = capsys.readouterr().out
+
+    assert "Los Jardines - Almacen: pagina 25" in salida
+    assert "500 productos acumulados" in salida
 
 
 class RespuestaFake:

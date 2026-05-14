@@ -16,6 +16,7 @@ REQUEST_TIMEOUT = 20
 REQUEST_REINTENTOS = 3
 PAUSA_ENTRE_PAGINAS = 1
 PAUSA_REINTENTO = 5
+INTERVALO_PROGRESO_PAGINAS = 25
 RUTA_CATEGORIAS_STOCK = (
     Path(__file__).resolve().parent.parent / "stock_categorias_urls.txt"
 )
@@ -561,6 +562,17 @@ def descargar_html(
     return None
 
 
+def imprimir_progreso_scraper(supermercado, categoria, pagina, total_productos):
+    """Imprime avance periodico para logs de categorias extensas."""
+    if pagina % INTERVALO_PROGRESO_PAGINAS != 0:
+        return
+
+    print(
+        f"{supermercado} - {categoria}: pagina {pagina}, "
+        f"{total_productos} productos acumulados"
+    )
+
+
 def scrapear_superseis():
     """Scrapea productos destacados de Superseis y retorna una lista de precios."""
     with crear_sesion() as sesion:
@@ -604,6 +616,12 @@ def scrapear_categoria(url, nombre_categoria, limite_paginas=100, sesion=None):
 
             productos_categoria.extend(productos)
             paginas_con_productos += 1
+            imprimir_progreso_scraper(
+                "Superseis",
+                nombre_categoria,
+                pagina,
+                len(productos_categoria),
+            )
             time.sleep(PAUSA_ENTRE_PAGINAS)
     finally:
         if sesion_propia:
@@ -673,6 +691,12 @@ def scrapear_stock(limite_categorias=None, limite_paginas=50):
 
                 productos_categoria.extend(productos)
                 paginas_con_productos += 1
+                imprimir_progreso_scraper(
+                    "Stock",
+                    nombre_categoria,
+                    pagina,
+                    len(productos_categoria),
+                )
                 time.sleep(PAUSA_ENTRE_PAGINAS)
 
             todos_los_productos.extend(productos_categoria)
@@ -719,6 +743,12 @@ def scrapear_los_jardines(limite_categorias=None, limite_paginas=250):
 
                 productos_categoria.extend(productos)
                 paginas_con_productos += 1
+                imprimir_progreso_scraper(
+                    "Los Jardines",
+                    nombre_categoria,
+                    pagina,
+                    len(productos_categoria),
+                )
                 time.sleep(PAUSA_ENTRE_PAGINAS)
 
             todos_los_productos.extend(productos_categoria)
