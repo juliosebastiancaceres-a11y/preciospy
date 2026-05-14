@@ -894,6 +894,9 @@ def obtener_colores_supermercados(supermercados):
     colores_fijos = {
         "stock": "#0038A8",
         "superseis": "#2E7D32",
+        "biggie": "#C6051D",
+        "los jardines": "#D6A300",
+        "casa rica": "#101828",
     }
     paleta_respaldo = ["#0038A8", "#12805C", "#7C3AED", "#C47A00"]
     dominio = []
@@ -2402,11 +2405,16 @@ def mostrar_evolucion_precios(precios):
         return
 
     altura_grafico = 430 if comparar else 380
+    dominio_colores, colores_supermercado = obtener_colores_supermercados(
+        evolucion_filtrada["supermercado"].dropna().unique()
+    )
+    mapa_colores = dict(zip(dominio_colores, colores_supermercado))
     opciones_grafico = {
         "data_frame": evolucion_filtrada,
         "x": "fecha",
         "y": "precio",
         "color": "supermercado",
+        "color_discrete_map": mapa_colores,
         "markers": True,
         "hover_data": {
             "producto": True,

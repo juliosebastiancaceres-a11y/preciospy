@@ -4,6 +4,7 @@ from dashboard import (
     filtrar_evolucion_supermercados,
     normalizar_precios,
     obtener_configuracion_evolucion,
+    obtener_colores_supermercados,
     preparar_evolucion_producto,
     preparar_opciones_evolucion,
     preparar_resumen_evolucion,
@@ -94,6 +95,20 @@ def test_obtener_configuracion_evolucion_prepara_modo_comparar():
 
     assert comparar is True
     assert set(filtrada["supermercado"]) == {"Stock", "Superseis"}
+
+
+def test_obtener_colores_supermercados_reconocibles():
+    dominio, colores = obtener_colores_supermercados(
+        ["Biggie", "Los Jardines", "Casa Rica", "Stock", "Superseis"]
+    )
+
+    assert dict(zip(dominio, colores)) == {
+        "Biggie": "#C6051D",
+        "Los Jardines": "#D6A300",
+        "Casa Rica": "#101828",
+        "Stock": "#0038A8",
+        "Superseis": "#2E7D32",
+    }
 
 
 def test_preparar_resumen_evolucion_calcula_variacion():
