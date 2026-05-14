@@ -207,6 +207,13 @@ def _parsear_numero(texto):
         return None
 
 
+def _parsear_numero_mililitros(texto):
+    if re.fullmatch(r"\d{1,3}\.\d{3}", str(texto)):
+        return float(str(texto).replace(".", ""))
+
+    return _parsear_numero(texto)
+
+
 def _formatear_numero_unidad(numero):
     if numero is None:
         return None
@@ -291,7 +298,8 @@ def normalizar_nombre_comparable(nombre):
     texto = re.sub(r"(\d)([a-z])", r"\1 \2", texto)
     texto = re.sub(r"([a-z])(\d)", r"\1 \2", texto)
     texto = re.sub(r"[^a-z0-9,.]+", " ", texto)
-    tokens = texto.split()
+    tokens = [token.strip(".,") for token in texto.split()]
+    tokens = [token for token in tokens if token]
 
     unidades_litro = {"l", "lt", "lts", "litro", "litros"}
     unidades_mililitro = {"ml", "mililitro", "mililitros", "cc"}
@@ -314,12 +322,16 @@ def normalizar_nombre_comparable(nombre):
             continue
 
         if numero is not None and siguiente in unidades_mililitro:
-            if numero >= 1000 and numero % 1000 == 0:
+            numero_ml = _parsear_numero_mililitros(token)
+
+            if numero_ml >= 1000:
                 tokens_normalizados.extend(
-                    [_formatear_numero_unidad(numero / 1000), "L"]
+                    [_formatear_numero_unidad(numero_ml / 1000), "L"]
                 )
             else:
-                tokens_normalizados.extend([_formatear_numero_unidad(numero), "ml"])
+                tokens_normalizados.extend(
+                    [_formatear_numero_unidad(numero_ml), "ml"]
+                )
             indice += 2
             continue
 

@@ -44,6 +44,10 @@ def test_normalizar_nombre_comparable_litros():
     assert normalizar_nombre_comparable("Coca-Cola 2 Litros") == "coca cola 2 L"
     assert normalizar_nombre_comparable("COCA COLA 2L") == "coca cola 2 L"
     assert normalizar_nombre_comparable("Coca Cola 2000 ml") == "coca cola 2 L"
+    assert (
+        normalizar_nombre_comparable("Aceite de Girasol Natura de 1.500 ml.")
+        == "aceite de girasol natura de 1.5 L"
+    )
 
 
 def test_normalizar_nombre_comparable_con_acentos_y_peso():
