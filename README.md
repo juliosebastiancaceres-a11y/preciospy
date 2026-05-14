@@ -114,6 +114,7 @@ Ejecutar solo un supermercado:
 python main.py --supermercado superseis
 python main.py --supermercado stock
 python main.py --supermercado losjardines
+python main.py --supermercado casarica
 ```
 
 Prueba corta sin enviar datos a Supabase:
@@ -126,6 +127,8 @@ El scraper de Stock lee sus categorias desde `stock_categorias_urls.txt`.
 El scraper de Los Jardines recorre las paginas del catalogo con el formato
 `categoria.2`, `categoria.3`, etc., hasta que no encuentra mas productos o llega
 al limite configurado.
+El scraper de Casa Rica usa el mismo formato de paginacion del catalogo y recorre
+las categorias principales configuradas.
 
 ## Sincronizar historicos SQLite a Supabase
 

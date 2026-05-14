@@ -15,6 +15,8 @@ SUPERSEIS_LIMITE_CATEGORIAS="${SUPERSEIS_LIMITE_CATEGORIAS:-5}"
 SUPERSEIS_LIMITE_PAGINAS="${SUPERSEIS_LIMITE_PAGINAS:-2}"
 LOS_JARDINES_LIMITE_CATEGORIAS="${LOS_JARDINES_LIMITE_CATEGORIAS:-18}"
 LOS_JARDINES_LIMITE_PAGINAS="${LOS_JARDINES_LIMITE_PAGINAS:-250}"
+CASA_RICA_LIMITE_CATEGORIAS="${CASA_RICA_LIMITE_CATEGORIAS:-24}"
+CASA_RICA_LIMITE_PAGINAS="${CASA_RICA_LIMITE_PAGINAS:-250}"
 
 mkdir -p "$LOG_DIR"
 cd "$PROJECT_DIR" || exit 1
@@ -70,6 +72,13 @@ run_scraper() {
             --supermercado losjardines \
             --limite-categorias "$LOS_JARDINES_LIMITE_CATEGORIAS" \
             --limite-paginas "$LOS_JARDINES_LIMITE_PAGINAS"
+
+    run_scraper \
+        "Casa Rica" \
+        "$PYTHON_BIN" -u main.py \
+            --supermercado casarica \
+            --limite-categorias "$CASA_RICA_LIMITE_CATEGORIAS" \
+            --limite-paginas "$CASA_RICA_LIMITE_PAGINAS"
 
     run_scraper \
         "Sincronizar faltantes SQLite -> Supabase" \

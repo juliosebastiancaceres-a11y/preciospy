@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 URL_SUPERSEIS = "https://www.superseis.com.py/"
 URL_STOCK = "https://www.stock.com.py/"
 URL_LOS_JARDINES = "https://www.losjardinesonline.com.py/"
+URL_CASA_RICA = "https://www.casarica.com.py/"
 REQUEST_TIMEOUT = 20
 REQUEST_REINTENTOS = 3
 PAUSA_ENTRE_PAGINAS = 1
@@ -70,6 +71,53 @@ CATEGORIAS_LOS_JARDINES = [
     ("https://www.losjardinesonline.com.py/catalogo/jugueteria-c89", "Jugueteria"),
     ("https://www.losjardinesonline.com.py/catalogo/libreria-c90", "Libreria"),
     ("https://www.losjardinesonline.com.py/catalogo/hogar-c96", "Hogar"),
+]
+CATEGORIAS_CASA_RICA = [
+    ("https://www.casarica.com.py/catalogo/almacen-c1", "Almacen"),
+    ("https://www.casarica.com.py/catalogo/bazar-c342", "Bazar"),
+    ("https://www.casarica.com.py/catalogo/bebes-c288", "Bebes"),
+    (
+        "https://www.casarica.com.py/catalogo/bebidas-con-alcohol-c20",
+        "Bebidas con alcohol",
+    ),
+    (
+        "https://www.casarica.com.py/catalogo/bebidas-sin-alcohol-c46",
+        "Bebidas sin alcohol",
+    ),
+    ("https://www.casarica.com.py/catalogo/carniceria-c56", "Carniceria"),
+    (
+        "https://www.casarica.com.py/catalogo/chocolates-y-golosinas-c65",
+        "Chocolates y golosinas",
+    ),
+    (
+        "https://www.casarica.com.py/catalogo/condimentos-salsas-c79",
+        "Condimentos y salsas",
+    ),
+    ("https://www.casarica.com.py/catalogo/confiteria-c92", "Confiteria"),
+    ("https://www.casarica.com.py/catalogo/congelados-c103", "Congelados"),
+    ("https://www.casarica.com.py/catalogo/conservados-c116", "Conservados"),
+    (
+        "https://www.casarica.com.py/catalogo/cuidado-del-hogar-c123",
+        "Cuidado del hogar",
+    ),
+    (
+        "https://www.casarica.com.py/catalogo/cuidado-personal-c144",
+        "Cuidado personal",
+    ),
+    ("https://www.casarica.com.py/catalogo/desayuno-c165", "Desayuno"),
+    ("https://www.casarica.com.py/catalogo/fiambreria-c193", "Fiambreria"),
+    ("https://www.casarica.com.py/catalogo/helados-c339", "Helados"),
+    ("https://www.casarica.com.py/catalogo/lacteos-c209", "Lacteos"),
+    ("https://www.casarica.com.py/catalogo/mascotas-c314", "Mascotas"),
+    ("https://www.casarica.com.py/catalogo/panaderia-c225", "Panaderia"),
+    ("https://www.casarica.com.py/catalogo/pastas-frescas-c237", "Pastas frescas"),
+    ("https://www.casarica.com.py/catalogo/queseria-c247", "Queseria"),
+    ("https://www.casarica.com.py/catalogo/rotiseria-c323", "Rotiseria"),
+    ("https://www.casarica.com.py/catalogo/snacks-c271", "Snacks"),
+    (
+        "https://www.casarica.com.py/catalogo/verduleria-fruteria-c280",
+        "Verduleria y fruteria",
+    ),
 ]
 
 
@@ -409,6 +457,11 @@ def construir_url_pagina_los_jardines(url, pagina):
     return url_paginada
 
 
+def construir_url_pagina_casa_rica(url, pagina):
+    """Construye la URL paginada que usa Casa Rica."""
+    return construir_url_pagina_los_jardines(url, pagina)
+
+
 def leer_categorias_stock():
     """Lee las categorias de Stock desde el archivo local."""
     categorias = []
@@ -482,12 +535,30 @@ def _extraer_unidad_los_jardines(contenedor):
     return unidad.lower() if unidad else "unidad"
 
 
-def extraer_productos_los_jardines(
+def _extraer_precio_dattamax(contenedor):
+    boton_carrito = contenedor.select_one("a.add_to_cart_button[data-product_price]")
+    if boton_carrito:
+        precio_atributo = boton_carrito.get("data-product_price")
+        if precio_atributo:
+            precio_texto = str(precio_atributo).split(".", 1)[0]
+            if limpiar_precio(precio_texto) is not None:
+                return precio_texto
+
+    for precio_html in contenedor.select("span.price span.amount"):
+        precio_texto = precio_html.get_text(" ", strip=True)
+        if limpiar_precio(precio_texto) is not None:
+            return precio_texto
+
+    return None
+
+
+def _extraer_productos_dattamax(
     html,
-    categoria=None,
-    url_categoria=URL_LOS_JARDINES,
+    supermercado,
+    categoria,
+    base_url,
+    obtener_unidad,
 ):
-    """Extrae productos desde el HTML de una pagina de Los Jardines."""
     soup = BeautifulSoup(html, "html.parser")
     productos = []
 
@@ -496,37 +567,56 @@ def extraer_productos_los_jardines(
             nombre_html = producto_html.select_one(
                 "h2.ecommercepro-loop-product__title"
             )
-            precio_html = producto_html.select_one(
-                "a.add_to_cart_button[data-product_price]"
-            )
+            precio_texto = _extraer_precio_dattamax(producto_html)
 
-            if not nombre_html or not precio_html:
-                precio_html = producto_html.select_one("span.price span.amount")
-
-            if not nombre_html or not precio_html:
+            if not nombre_html or precio_texto is None:
                 continue
 
-            precio_texto = precio_html.get("data-product_price")
-            if precio_texto:
-                precio_texto = str(precio_texto).split(".", 1)[0]
-            else:
-                precio_texto = precio_html.get_text(" ", strip=True)
-
             producto = construir_producto(
-                supermercado="Los Jardines",
+                supermercado=supermercado,
                 nombre=nombre_html.get_text(" ", strip=True),
                 precio_texto=precio_texto,
                 categoria=categoria,
-                url_producto=extraer_url_producto(producto_html, URL_LOS_JARDINES),
-                unidad=_extraer_unidad_los_jardines(producto_html),
+                url_producto=extraer_url_producto(producto_html, base_url),
+                unidad=obtener_unidad(producto_html),
             )
 
             if producto:
                 productos.append(producto)
         except Exception as error:
-            print(f"Producto de Los Jardines omitido por error de lectura: {error}")
+            print(f"Producto de {supermercado} omitido por error de lectura: {error}")
 
     return productos
+
+
+def extraer_productos_los_jardines(
+    html,
+    categoria=None,
+    url_categoria=URL_LOS_JARDINES,
+):
+    """Extrae productos desde el HTML de una pagina de Los Jardines."""
+    return _extraer_productos_dattamax(
+        html,
+        supermercado="Los Jardines",
+        categoria=categoria,
+        base_url=URL_LOS_JARDINES,
+        obtener_unidad=_extraer_unidad_los_jardines,
+    )
+
+
+def extraer_productos_casa_rica(
+    html,
+    categoria=None,
+    url_categoria=URL_CASA_RICA,
+):
+    """Extrae productos desde el HTML de una pagina de Casa Rica."""
+    return _extraer_productos_dattamax(
+        html,
+        supermercado="Casa Rica",
+        categoria=categoria,
+        base_url=URL_CASA_RICA,
+        obtener_unidad=lambda _producto_html: "unidad",
+    )
 
 
 def descargar_html(
@@ -756,6 +846,58 @@ def scrapear_los_jardines(limite_categorias=None, limite_paginas=250):
                 f"Los Jardines - {nombre_categoria}: "
                 f"{len(productos_categoria)} productos en "
                 f"{paginas_con_productos} paginas"
+            )
+
+    return todos_los_productos
+
+
+def scrapear_casa_rica(limite_categorias=None, limite_paginas=250):
+    """Scrapea todos los productos de Casa Rica recorriendo su paginacion."""
+    todos_los_productos = []
+    categorias = CATEGORIAS_CASA_RICA
+
+    if limite_categorias is not None:
+        categorias = categorias[:limite_categorias]
+
+    with crear_sesion() as sesion:
+        for url, nombre_categoria in categorias:
+            productos_categoria = []
+            paginas_con_productos = 0
+
+            for pagina in range(1, limite_paginas + 1):
+                url_pagina = construir_url_pagina_casa_rica(url, pagina)
+                html = descargar_html(
+                    sesion,
+                    url_pagina,
+                    f"Casa Rica {nombre_categoria}, pagina {pagina}",
+                )
+
+                if not html:
+                    break
+
+                productos = extraer_productos_casa_rica(
+                    html,
+                    categoria=nombre_categoria,
+                    url_categoria=url,
+                )
+
+                if not productos:
+                    break
+
+                productos_categoria.extend(productos)
+                paginas_con_productos += 1
+                imprimir_progreso_scraper(
+                    "Casa Rica",
+                    nombre_categoria,
+                    pagina,
+                    len(productos_categoria),
+                )
+                time.sleep(PAUSA_ENTRE_PAGINAS)
+
+            todos_los_productos.extend(productos_categoria)
+            print(
+                f"Casa Rica - {nombre_categoria}: {len(productos_categoria)} productos "
+                f"en {paginas_con_productos} paginas"
             )
 
     return todos_los_productos

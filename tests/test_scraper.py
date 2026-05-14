@@ -1,7 +1,9 @@
 from scraper import (
+    construir_url_pagina_casa_rica,
     construir_url_pagina_los_jardines,
     construir_producto,
     descargar_html,
+    extraer_productos_casa_rica,
     extraer_productos_los_jardines,
     imprimir_progreso_scraper,
     limpiar_precio,
@@ -101,6 +103,16 @@ def test_construir_url_pagina_los_jardines():
     )
 
 
+def test_construir_url_pagina_casa_rica():
+    url = "https://www.casarica.com.py/catalogo/almacen-c1"
+
+    assert construir_url_pagina_casa_rica(url, 1) == url
+    assert (
+        construir_url_pagina_casa_rica(url, 2)
+        == "https://www.casarica.com.py/catalogo/almacen-c1.2"
+    )
+
+
 def test_extraer_productos_los_jardines_desde_html():
     html = """
     <div class="product">
@@ -136,6 +148,44 @@ def test_extraer_productos_los_jardines_desde_html():
     assert (
         productos[0]["url_producto"]
         == "https://www.losjardinesonline.com.py/arroz-sun-tipo-ii-azul-1-k-p12657"
+    )
+
+
+def test_extraer_productos_casa_rica_desde_html():
+    html = """
+    <div class="product">
+        <a href="aceite-de-oliva-huasco-extra-virgen-500ml-p34561"></a>
+        <span class="price">
+            <ins><span class="amount"></span></ins>
+            <span class="amount">₲. 80.000</span>
+        </span>
+        <h2 class="ecommercepro-loop-product__title">
+            ACEITE DE OLIVA HUASCO EXTRA VIRGEN 500ML
+        </h2>
+        <a class="button add_to_cart_button"
+           data-product_id="34561"
+           href="javascript:void(0);">Agregar al carrito</a>
+    </div>
+    """
+
+    productos = extraer_productos_casa_rica(
+        html,
+        categoria="Almacen",
+        url_categoria="https://www.casarica.com.py/catalogo/almacen-c1",
+    )
+
+    assert len(productos) == 1
+    assert productos[0]["supermercado"] == "Casa Rica"
+    assert (
+        productos[0]["nombre_producto"]
+        == "ACEITE DE OLIVA HUASCO EXTRA VIRGEN 500ML"
+    )
+    assert productos[0]["precio"] == 80000
+    assert productos[0]["categoria"] == "Almacen"
+    assert productos[0]["unidad"] == "unidad"
+    assert (
+        productos[0]["url_producto"]
+        == "https://www.casarica.com.py/aceite-de-oliva-huasco-extra-virgen-500ml-p34561"
     )
 
 
