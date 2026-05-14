@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 
 URL_SUPERSEIS = "https://www.superseis.com.py/"
 URL_STOCK = "https://www.stock.com.py/"
+URL_LOS_JARDINES = "https://www.losjardinesonline.com.py/"
 REQUEST_TIMEOUT = 20
 REQUEST_REINTENTOS = 3
 PAUSA_ENTRE_PAGINAS = 1
@@ -36,6 +37,38 @@ CATEGORIAS_SUPERSEIS = [
     ("https://www.superseis.com.py/catalog/pastas", "Pastas"),
     ("https://www.superseis.com.py/catalog/perfumeria", "Perfumeria"),
     ("https://www.superseis.com.py/catalog/reposteria", "Reposteria"),
+]
+CATEGORIAS_LOS_JARDINES = [
+    ("https://www.losjardinesonline.com.py/catalogo/almacen-c2", "Almacen"),
+    ("https://www.losjardinesonline.com.py/catalogo/delicatessen-c95", "Delicatessen"),
+    ("https://www.losjardinesonline.com.py/catalogo/carnes-c48", "Carnes"),
+    (
+        "https://www.losjardinesonline.com.py/catalogo/frutas-y-verduras-c1",
+        "Frutas y Verduras",
+    ),
+    ("https://www.losjardinesonline.com.py/catalogo/lacteos-c58", "Lacteos"),
+    (
+        "https://www.losjardinesonline.com.py/catalogo/nuestra-panaderia-c6",
+        "Nuestra Panaderia",
+    ),
+    ("https://www.losjardinesonline.com.py/catalogo/panaderia-c116", "Panaderia"),
+    ("https://www.losjardinesonline.com.py/catalogo/fiambreria-c7", "Fiambreria"),
+    ("https://www.losjardinesonline.com.py/catalogo/congelados-c53", "Congelados"),
+    (
+        "https://www.losjardinesonline.com.py/catalogo/bebidas-sin-alcohol-c78",
+        "Bebidas sin alcohol",
+    ),
+    (
+        "https://www.losjardinesonline.com.py/catalogo/bebidas-con-alcohol-c4",
+        "Bebidas con alcohol",
+    ),
+    ("https://www.losjardinesonline.com.py/catalogo/perfumeria-c3", "Perfumeria"),
+    ("https://www.losjardinesonline.com.py/catalogo/limpieza-c5", "Limpieza"),
+    ("https://www.losjardinesonline.com.py/catalogo/veterinaria-c69", "Veterinaria"),
+    ("https://www.losjardinesonline.com.py/catalogo/ferreteria-c87", "Ferreteria"),
+    ("https://www.losjardinesonline.com.py/catalogo/jugueteria-c89", "Jugueteria"),
+    ("https://www.losjardinesonline.com.py/catalogo/libreria-c90", "Libreria"),
+    ("https://www.losjardinesonline.com.py/catalogo/hogar-c96", "Hogar"),
 ]
 
 
@@ -357,6 +390,24 @@ def construir_url_pagina_stock(url, pagina):
     return f"{url}{separador}pageindex={pagina}"
 
 
+def construir_url_pagina_los_jardines(url, pagina):
+    """Construye la URL paginada que usa Los Jardines."""
+    if pagina <= 1:
+        return url
+
+    url_sin_fragmento, separador_fragmento, fragmento = url.partition("#")
+    url_base, separador_query, query = url_sin_fragmento.partition("?")
+    url_paginada = f"{url_base}.{pagina}"
+
+    if separador_query:
+        url_paginada = f"{url_paginada}?{query}"
+
+    if separador_fragmento:
+        url_paginada = f"{url_paginada}#{fragmento}"
+
+    return url_paginada
+
+
 def leer_categorias_stock():
     """Lee las categorias de Stock desde el archivo local."""
     categorias = []
@@ -417,6 +468,62 @@ def extraer_productos_stock(html, categoria=None, url_categoria=URL_STOCK):
                 productos.append(producto)
         except Exception as error:
             print(f"Producto de Stock omitido por error de lectura: {error}")
+
+    return productos
+
+
+def _extraer_unidad_los_jardines(contenedor):
+    cantidad_html = contenedor.select_one("input.inp-quantity")
+    if not cantidad_html:
+        return "unidad"
+
+    unidad = normalizar_nombre_producto(cantidad_html.get("data-modo_venta"))
+    return unidad.lower() if unidad else "unidad"
+
+
+def extraer_productos_los_jardines(
+    html,
+    categoria=None,
+    url_categoria=URL_LOS_JARDINES,
+):
+    """Extrae productos desde el HTML de una pagina de Los Jardines."""
+    soup = BeautifulSoup(html, "html.parser")
+    productos = []
+
+    for producto_html in soup.select("div.product"):
+        try:
+            nombre_html = producto_html.select_one(
+                "h2.ecommercepro-loop-product__title"
+            )
+            precio_html = producto_html.select_one(
+                "a.add_to_cart_button[data-product_price]"
+            )
+
+            if not nombre_html or not precio_html:
+                precio_html = producto_html.select_one("span.price span.amount")
+
+            if not nombre_html or not precio_html:
+                continue
+
+            precio_texto = precio_html.get("data-product_price")
+            if precio_texto:
+                precio_texto = str(precio_texto).split(".", 1)[0]
+            else:
+                precio_texto = precio_html.get_text(" ", strip=True)
+
+            producto = construir_producto(
+                supermercado="Los Jardines",
+                nombre=nombre_html.get_text(" ", strip=True),
+                precio_texto=precio_texto,
+                categoria=categoria,
+                url_producto=extraer_url_producto(producto_html, URL_LOS_JARDINES),
+                unidad=_extraer_unidad_los_jardines(producto_html),
+            )
+
+            if producto:
+                productos.append(producto)
+        except Exception as error:
+            print(f"Producto de Los Jardines omitido por error de lectura: {error}")
 
     return productos
 
@@ -572,6 +679,53 @@ def scrapear_stock(limite_categorias=None, limite_paginas=50):
             print(
                 f"Stock - {nombre_categoria}: {len(productos_categoria)} productos "
                 f"en {paginas_con_productos} paginas"
+            )
+
+    return todos_los_productos
+
+
+def scrapear_los_jardines(limite_categorias=None, limite_paginas=250):
+    """Scrapea todos los productos de Los Jardines recorriendo su paginacion."""
+    todos_los_productos = []
+    categorias = CATEGORIAS_LOS_JARDINES
+
+    if limite_categorias is not None:
+        categorias = categorias[:limite_categorias]
+
+    with crear_sesion() as sesion:
+        for url, nombre_categoria in categorias:
+            productos_categoria = []
+            paginas_con_productos = 0
+
+            for pagina in range(1, limite_paginas + 1):
+                url_pagina = construir_url_pagina_los_jardines(url, pagina)
+                html = descargar_html(
+                    sesion,
+                    url_pagina,
+                    f"Los Jardines {nombre_categoria}, pagina {pagina}",
+                )
+
+                if not html:
+                    break
+
+                productos = extraer_productos_los_jardines(
+                    html,
+                    categoria=nombre_categoria,
+                    url_categoria=url,
+                )
+
+                if not productos:
+                    break
+
+                productos_categoria.extend(productos)
+                paginas_con_productos += 1
+                time.sleep(PAUSA_ENTRE_PAGINAS)
+
+            todos_los_productos.extend(productos_categoria)
+            print(
+                f"Los Jardines - {nombre_categoria}: "
+                f"{len(productos_categoria)} productos en "
+                f"{paginas_con_productos} paginas"
             )
 
     return todos_los_productos

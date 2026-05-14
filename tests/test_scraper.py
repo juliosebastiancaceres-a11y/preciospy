@@ -1,6 +1,8 @@
 from scraper import (
+    construir_url_pagina_los_jardines,
     construir_producto,
     descargar_html,
+    extraer_productos_los_jardines,
     limpiar_precio,
     normalizar_nombre_comparable,
     normalizar_nombre_producto,
@@ -86,6 +88,54 @@ def test_construir_producto_agrega_nombre_normalizado():
 
     assert producto["nombre_producto"] == "Coca-Cola 2 Litros"
     assert producto["nombre_normalizado"] == "coca cola 2 L"
+
+
+def test_construir_url_pagina_los_jardines():
+    url = "https://www.losjardinesonline.com.py/catalogo/almacen-c2"
+
+    assert construir_url_pagina_los_jardines(url, 1) == url
+    assert (
+        construir_url_pagina_los_jardines(url, 2)
+        == "https://www.losjardinesonline.com.py/catalogo/almacen-c2.2"
+    )
+
+
+def test_extraer_productos_los_jardines_desde_html():
+    html = """
+    <div class="product">
+        <a href="arroz-sun-tipo-ii-azul-1-k-p12657"></a>
+        <span class="price">
+            <ins><span class="amount"></span></ins>
+            <span class="amount">₲. 6.550</span>
+        </span>
+        <h2 class="ecommercepro-loop-product__title">ARROZ SUN TIPO II AZUL 1 K</h2>
+        <input class="inp-quantity" data-modo_venta="Unidad">
+        <a class="button add_to_cart_button"
+           data-product_id="12657"
+           data-product_ean="7841056000353"
+           data-product_name="ARROZ SUN TIPO II AZUL 1 K"
+           data-product_category="Almacén"
+           data-product_price="6550.00"
+           href="javascript:void(0);">Agregar al carrito</a>
+    </div>
+    """
+
+    productos = extraer_productos_los_jardines(
+        html,
+        categoria="Almacen",
+        url_categoria="https://www.losjardinesonline.com.py/catalogo/almacen-c2",
+    )
+
+    assert len(productos) == 1
+    assert productos[0]["supermercado"] == "Los Jardines"
+    assert productos[0]["nombre_producto"] == "ARROZ SUN TIPO II AZUL 1 K"
+    assert productos[0]["precio"] == 6550
+    assert productos[0]["categoria"] == "Almacen"
+    assert productos[0]["unidad"] == "unidad"
+    assert (
+        productos[0]["url_producto"]
+        == "https://www.losjardinesonline.com.py/arroz-sun-tipo-ii-azul-1-k-p12657"
+    )
 
 
 class RespuestaFake:
