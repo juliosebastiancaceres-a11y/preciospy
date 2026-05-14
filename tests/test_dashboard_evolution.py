@@ -8,6 +8,7 @@ from dashboard import (
     preparar_evolucion_producto,
     preparar_opciones_evolucion,
     preparar_resumen_evolucion,
+    reconciliar_supermercados_seleccionados,
 )
 
 
@@ -109,6 +110,28 @@ def test_obtener_colores_supermercados_reconocibles():
         "Stock": "#0038A8",
         "Superseis": "#2E7D32",
     }
+
+
+def test_reconciliar_supermercados_seleccionados_agrega_nuevos():
+    seleccion = ["Stock", "Superseis"]
+    supermercados = ["Biggie", "Casa Rica", "Stock", "Superseis"]
+
+    assert reconciliar_supermercados_seleccionados(seleccion, supermercados) == [
+        "Stock",
+        "Superseis",
+        "Biggie",
+        "Casa Rica",
+    ]
+
+
+def test_reconciliar_supermercados_seleccionados_limpia_obsoletos():
+    seleccion = ["Stock", "Viejo"]
+    supermercados = ["Biggie", "Stock"]
+
+    assert reconciliar_supermercados_seleccionados(seleccion, supermercados) == [
+        "Stock",
+        "Biggie",
+    ]
 
 
 def test_preparar_resumen_evolucion_calcula_variacion():
