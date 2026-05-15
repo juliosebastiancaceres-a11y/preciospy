@@ -50,12 +50,14 @@ Estado final: 0
     assert log["secciones"][0]["sqlite"] == 5
     assert log["secciones"][0]["supabase"] == 20
     assert log["secciones"][0]["estado"] == "OK"
+    assert log["secciones"][0]["duracion"] == "20 s"
 
     tabla = preparar_tabla_ultima_corrida(log)
 
     assert tabla["Paso"].tolist() == ["Stock", "Superseis"]
     assert tabla.loc[0, "Scrapeados"] == 20
     assert tabla.loc[1, "SQLite"] == 3
+    assert tabla.loc[1, "Duración"] == "10 s"
 
     tabla_monitoreo = preparar_tabla_monitoreo_corrida(log)
 
@@ -64,7 +66,7 @@ Estado final: 0
         "Estado",
         "Scrapeados",
         "Sincronizados",
-        "Duplicados",
+        "Duración",
         "Avisos",
         "Pendientes",
     ]
@@ -171,8 +173,10 @@ Estado final: 0
     tabla_monitoreo = preparar_tabla_monitoreo_corrida(log)
 
     assert tabla_monitoreo.loc[0, "Estado"] == "OK con avisos"
+    assert tabla_monitoreo.loc[0, "Duración"] == "21 min 0 s"
     assert tabla_monitoreo.loc[1, "Paso"] == "Sync final"
     assert tabla_monitoreo.loc[1, "Sincronizados"] == 81997
+    assert tabla_monitoreo.loc[1, "Duración"] == "1 min 0 s"
 
 
 def test_obtener_logs_scraper_respeta_limite(tmp_path, monkeypatch):

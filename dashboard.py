@@ -1,6 +1,7 @@
 import os
 import re
 import sqlite3
+from datetime import timedelta
 from io import BytesIO
 from html import escape
 from pathlib import Path
@@ -1306,6 +1307,32 @@ def sumar_valores_log(patron, contenido):
     return sum(int(valor) for valor in re.findall(patron, contenido, flags=re.MULTILINE))
 
 
+def formatear_duracion_corrida(inicio, fin):
+    """Calcula y formatea la duracion de un paso del scraper."""
+    if not inicio or not fin:
+        return "Sin dato"
+
+    inicio_fecha = pd.to_datetime(inicio, errors="coerce", utc=True)
+    fin_fecha = pd.to_datetime(fin, errors="coerce", utc=True)
+
+    if pd.isna(inicio_fecha) or pd.isna(fin_fecha):
+        return "Sin dato"
+
+    duracion = fin_fecha - inicio_fecha
+    if duracion < timedelta(0):
+        return "Sin dato"
+
+    segundos = int(duracion.total_seconds())
+    horas, resto = divmod(segundos, 3600)
+    minutos, segundos = divmod(resto, 60)
+
+    if horas:
+        return f"{horas} h {minutos} min"
+    if minutos:
+        return f"{minutos} min {segundos} s"
+    return f"{segundos} s"
+
+
 def parsear_secciones_log_scraper(contenido):
     """Extrae el detalle por supermercado o paso desde un log del scraper."""
     secciones = []
@@ -1346,6 +1373,10 @@ def parsear_secciones_log_scraper(contenido):
                 "fin": extraer_ultimo_valor_log(r"Fin:\s*(.+)", bloque),
                 "codigo": codigo,
                 "estado": "OK" if ok else "Error",
+                "duracion": formatear_duracion_corrida(
+                    extraer_primer_valor_log(r"Inicio:\s*(.+)", bloque),
+                    extraer_ultimo_valor_log(r"Fin:\s*(.+)", bloque),
+                ),
                 "scrapeados": sumar_valores_log(
                     r"Productos scrapeados:\s*(\d+)", bloque
                 ),
@@ -1400,6 +1431,7 @@ def preparar_tabla_ultima_corrida(log):
                 "Avisos": seccion["advertencias"],
                 "Errores": seccion["errores"],
                 "Código": "" if seccion["codigo"] is None else seccion["codigo"],
+                "Duración": seccion["duracion"],
                 "Inicio": seccion["inicio"],
                 "Fin": seccion["fin"],
             }
@@ -1439,7 +1471,7 @@ def preparar_tabla_monitoreo_corrida(log):
                 "Estado": obtener_estado_visual_corrida(seccion),
                 "Scrapeados": seccion["scrapeados"],
                 "Sincronizados": sincronizados,
-                "Duplicados": seccion["duplicados"],
+                "Duración": seccion["duracion"],
                 "Avisos": seccion["advertencias"],
                 "Pendientes": seccion["faltantes"],
             }
