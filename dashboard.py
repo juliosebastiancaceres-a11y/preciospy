@@ -889,8 +889,12 @@ def formatear_guaranies(precio):
     return f"₲ {int(round(precio)):,.0f}".replace(",", ".")
 
 
-def reconciliar_supermercados_seleccionados(seleccion_guardada, supermercados):
-    """Conserva seleccion valida y agrega supermercados nuevos al filtro."""
+def reconciliar_supermercados_seleccionados(
+    seleccion_guardada,
+    supermercados,
+    supermercados_anteriores=None,
+):
+    """Conserva seleccion valida y agrega solo supermercados recien detectados."""
     if seleccion_guardada is None:
         return list(supermercados)
 
@@ -899,10 +903,11 @@ def reconciliar_supermercados_seleccionados(seleccion_guardada, supermercados):
         for supermercado in seleccion_guardada
         if supermercado in supermercados
     ]
+    supermercados_anteriores = set(supermercados_anteriores or supermercados)
     supermercados_nuevos = [
         supermercado
         for supermercado in supermercados
-        if supermercado not in seleccion_valida
+        if supermercado not in supermercados_anteriores
     ]
     return seleccion_valida + supermercados_nuevos
 
@@ -1554,8 +1559,10 @@ def mostrar_filtros(precios):
         reconciliar_supermercados_seleccionados(
             st.session_state.get("filtro_supermercados"),
             supermercados,
+            st.session_state.get("filtro_supermercados_disponibles"),
         )
     )
+    st.session_state["filtro_supermercados_disponibles"] = supermercados
 
     st.session_state.setdefault("filtro_busqueda", "")
     st.session_state.setdefault("filtro_precio", (precio_minimo, precio_maximo))

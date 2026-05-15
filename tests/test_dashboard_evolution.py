@@ -115,23 +115,37 @@ def test_obtener_colores_supermercados_reconocibles():
 def test_reconciliar_supermercados_seleccionados_agrega_nuevos():
     seleccion = ["Stock", "Superseis"]
     supermercados = ["Biggie", "Casa Rica", "Stock", "Superseis"]
+    supermercados_anteriores = ["Stock", "Superseis"]
 
-    assert reconciliar_supermercados_seleccionados(seleccion, supermercados) == [
-        "Stock",
-        "Superseis",
-        "Biggie",
-        "Casa Rica",
-    ]
+    assert reconciliar_supermercados_seleccionados(
+        seleccion,
+        supermercados,
+        supermercados_anteriores,
+    ) == ["Stock", "Superseis", "Biggie", "Casa Rica"]
+
+
+def test_reconciliar_supermercados_seleccionados_respeta_removidos():
+    seleccion = ["Stock", "Superseis"]
+    supermercados = ["Biggie", "Casa Rica", "Stock", "Superseis"]
+    supermercados_anteriores = ["Biggie", "Casa Rica", "Stock", "Superseis"]
+
+    assert reconciliar_supermercados_seleccionados(
+        seleccion,
+        supermercados,
+        supermercados_anteriores,
+    ) == ["Stock", "Superseis"]
 
 
 def test_reconciliar_supermercados_seleccionados_limpia_obsoletos():
     seleccion = ["Stock", "Viejo"]
     supermercados = ["Biggie", "Stock"]
+    supermercados_anteriores = ["Biggie", "Stock", "Viejo"]
 
-    assert reconciliar_supermercados_seleccionados(seleccion, supermercados) == [
-        "Stock",
-        "Biggie",
-    ]
+    assert reconciliar_supermercados_seleccionados(
+        seleccion,
+        supermercados,
+        supermercados_anteriores,
+    ) == ["Stock"]
 
 
 def test_preparar_resumen_evolucion_calcula_variacion():
