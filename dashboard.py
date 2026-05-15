@@ -1381,7 +1381,7 @@ def parsear_secciones_log_scraper(contenido):
 
 
 def preparar_tabla_ultima_corrida(log):
-    """Prepara una tabla legible con el resultado del ultimo scraper."""
+    """Prepara una tabla tecnica con el resultado del ultimo scraper."""
     filas = []
 
     for seccion in log.get("secciones", []):
@@ -1406,6 +1406,59 @@ def preparar_tabla_ultima_corrida(log):
         )
 
     return pd.DataFrame(filas)
+
+
+def obtener_estado_visual_corrida(seccion):
+    """Devuelve un estado simple para leer rapido el monitoreo."""
+    if seccion["errores"] > 0 or seccion["estado"] != "OK":
+        return "Error"
+    if seccion["advertencias"] > 0:
+        return "OK con avisos"
+    return "OK"
+
+
+def simplificar_nombre_paso_corrida(nombre):
+    """Acorta nombres tecnicos del log para la vista de monitoreo."""
+    if nombre == "Sincronizar faltantes SQLite -> Supabase":
+        return "Sync final"
+    return nombre
+
+
+def preparar_tabla_monitoreo_corrida(log):
+    """Prepara una tabla compacta para usuarios del dashboard."""
+    filas = []
+
+    for seccion in log.get("secciones", []):
+        sincronizados = seccion["supabase"] + seccion["historicos"]
+        if seccion["nombre"] == "Sincronizar faltantes SQLite -> Supabase":
+            sincronizados = seccion["sqlite_revisados"]
+
+        filas.append(
+            {
+                "Paso": simplificar_nombre_paso_corrida(seccion["nombre"]),
+                "Estado": obtener_estado_visual_corrida(seccion),
+                "Scrapeados": seccion["scrapeados"],
+                "Sincronizados": sincronizados,
+                "Duplicados": seccion["duplicados"],
+                "Avisos": seccion["advertencias"],
+                "Pendientes": seccion["faltantes"],
+            }
+        )
+
+    return pd.DataFrame(filas)
+
+
+def colorear_tabla_monitoreo_corrida(fila):
+    """Aplica colores de semaforo a la tabla de monitoreo."""
+    estado = fila.get("Estado")
+    if estado == "Error":
+        fondo = "background-color: #FEE4E2; color: #7A271A;"
+    elif estado == "OK con avisos":
+        fondo = "background-color: #FEF0C7; color: #7A4E00;"
+    else:
+        fondo = "background-color: #D1FADF; color: #054F31;"
+
+    return [fondo if columna == "Estado" else "" for columna in fila.index]
 
 
 def parsear_log_scraper(ruta_log, lineas_detalle=40):
@@ -1675,7 +1728,7 @@ def mostrar_salud_sistema(precios, fuente):
             )
 
     if ultimo_log_scraper:
-        tabla_corrida = preparar_tabla_ultima_corrida(ultimo_log_scraper)
+        tabla_corrida = preparar_tabla_monitoreo_corrida(ultimo_log_scraper)
         if not tabla_corrida.empty:
             with st.expander("Última corrida del scraper", expanded=True):
                 st.caption(
@@ -1685,7 +1738,10 @@ def mostrar_salud_sistema(precios, fuente):
                     f"Fin: {ultimo_log_scraper['fin'] or 'Sin dato'}"
                 )
                 st.dataframe(
-                    tabla_corrida,
+                    tabla_corrida.style.apply(
+                        colorear_tabla_monitoreo_corrida,
+                        axis=1,
+                    ),
                     hide_index=True,
                     width="stretch",
                     height=min(320, 86 + len(tabla_corrida) * 36),

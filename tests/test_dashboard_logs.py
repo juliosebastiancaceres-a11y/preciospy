@@ -1,6 +1,7 @@
 from dashboard import (
     obtener_logs_scraper,
     parsear_log_scraper,
+    preparar_tabla_monitoreo_corrida,
     preparar_tabla_ultima_corrida,
 )
 
@@ -55,6 +56,19 @@ Estado final: 0
     assert tabla["Paso"].tolist() == ["Stock", "Superseis"]
     assert tabla.loc[0, "Scrapeados"] == 20
     assert tabla.loc[1, "SQLite"] == 3
+
+    tabla_monitoreo = preparar_tabla_monitoreo_corrida(log)
+
+    assert tabla_monitoreo.columns.tolist() == [
+        "Paso",
+        "Estado",
+        "Scrapeados",
+        "Sincronizados",
+        "Duplicados",
+        "Avisos",
+        "Pendientes",
+    ]
+    assert tabla_monitoreo["Estado"].tolist() == ["OK", "OK"]
 
 
 def test_parsear_log_scraper_detecta_error(tmp_path):
@@ -153,6 +167,12 @@ Estado final: 0
     assert sync_final["sqlite_revisados"] == 81997
     assert sync_final["supabase_existentes"] == 86586
     assert sync_final["faltantes"] == 0
+
+    tabla_monitoreo = preparar_tabla_monitoreo_corrida(log)
+
+    assert tabla_monitoreo.loc[0, "Estado"] == "OK con avisos"
+    assert tabla_monitoreo.loc[1, "Paso"] == "Sync final"
+    assert tabla_monitoreo.loc[1, "Sincronizados"] == 81997
 
 
 def test_obtener_logs_scraper_respeta_limite(tmp_path, monkeypatch):
