@@ -1289,10 +1289,130 @@ def formatear_fechas_faltantes(fechas, limite=4):
     return ", ".join(fechas_texto)
 
 
+def extraer_primer_valor_log(patron, contenido, defecto=""):
+    """Extrae el primer valor textual de un bloque de log."""
+    match = re.search(patron, contenido, flags=re.MULTILINE)
+    return match.group(1).strip() if match else defecto
+
+
+def extraer_ultimo_valor_log(patron, contenido, defecto=""):
+    """Extrae el ultimo valor textual de un bloque de log."""
+    matches = re.findall(patron, contenido, flags=re.MULTILINE)
+    return matches[-1].strip() if matches else defecto
+
+
+def sumar_valores_log(patron, contenido):
+    """Suma valores numericos presentes en un bloque de log."""
+    return sum(int(valor) for valor in re.findall(patron, contenido, flags=re.MULTILINE))
+
+
+def parsear_secciones_log_scraper(contenido):
+    """Extrae el detalle por supermercado o paso desde un log del scraper."""
+    secciones = []
+    seccion_actual = None
+
+    for linea in contenido.splitlines():
+        titulo_match = re.match(r"^==\s*(.+?)\s*==$", linea.strip())
+        if titulo_match:
+            if seccion_actual:
+                secciones.append(seccion_actual)
+            seccion_actual = {"nombre": titulo_match.group(1).strip(), "lineas": []}
+            continue
+
+        if seccion_actual is not None:
+            seccion_actual["lineas"].append(linea)
+
+    if seccion_actual:
+        secciones.append(seccion_actual)
+
+    detalles = []
+    for seccion in secciones:
+        bloque = "\n".join(seccion["lineas"])
+        codigo_texto = extraer_ultimo_valor_log(r"Codigo de salida:\s*(\d+)", bloque)
+        codigo = int(codigo_texto) if codigo_texto else None
+        ok = codigo == 0
+        lineas_error = [
+            linea.strip()
+            for linea in seccion["lineas"]
+            if "Error " in linea or "Traceback" in linea or "Client Error" in linea
+        ]
+        errores = [] if ok else lineas_error
+        advertencias = lineas_error if ok else []
+
+        detalles.append(
+            {
+                "nombre": seccion["nombre"],
+                "inicio": extraer_primer_valor_log(r"Inicio:\s*(.+)", bloque),
+                "fin": extraer_ultimo_valor_log(r"Fin:\s*(.+)", bloque),
+                "codigo": codigo,
+                "estado": "OK" if ok else "Error",
+                "scrapeados": sumar_valores_log(
+                    r"Productos scrapeados:\s*(\d+)", bloque
+                ),
+                "sqlite": sumar_valores_log(
+                    r"Productos guardados en SQLite:\s*(\d+)", bloque
+                ),
+                "supabase": sumar_valores_log(
+                    r"Productos sincronizados con Supabase:\s*(\d+)", bloque
+                ),
+                "sqlite_revisados": sumar_valores_log(
+                    r"Registros validos en SQLite:\s*(\d+)", bloque
+                ),
+                "supabase_existentes": sumar_valores_log(
+                    r"Claves existentes en Supabase:\s*(\d+)", bloque
+                ),
+                "historicos": sumar_valores_log(
+                    r"Historicos enviados a Supabase:\s*(\d+)", bloque
+                ),
+                "duplicados": sumar_valores_log(
+                    r"Productos duplicados omitidos antes de Supabase:\s*(\d+)",
+                    bloque,
+                ),
+                "faltantes": sumar_valores_log(
+                    r"Registros faltantes detectados:\s*(\d+)", bloque
+                ),
+                "errores": len(errores),
+                "advertencias": len(advertencias),
+                "ultimo_error": errores[-1][:180] if errores else "",
+            }
+        )
+
+    return detalles
+
+
+def preparar_tabla_ultima_corrida(log):
+    """Prepara una tabla legible con el resultado del ultimo scraper."""
+    filas = []
+
+    for seccion in log.get("secciones", []):
+        filas.append(
+            {
+                "Paso": seccion["nombre"],
+                "Estado": seccion["estado"],
+                "Scrapeados": seccion["scrapeados"],
+                "SQLite": seccion["sqlite"],
+                "Supabase": seccion["supabase"],
+                "SQLite revisados": seccion["sqlite_revisados"],
+                "Supabase existentes": seccion["supabase_existentes"],
+                "Históricos": seccion["historicos"],
+                "Duplicados": seccion["duplicados"],
+                "Faltantes": seccion["faltantes"],
+                "Avisos": seccion["advertencias"],
+                "Errores": seccion["errores"],
+                "Código": "" if seccion["codigo"] is None else seccion["codigo"],
+                "Inicio": seccion["inicio"],
+                "Fin": seccion["fin"],
+            }
+        )
+
+    return pd.DataFrame(filas)
+
+
 def parsear_log_scraper(ruta_log, lineas_detalle=40):
     """Extrae resumen operativo de un archivo de log del scraper."""
     contenido = ruta_log.read_text(encoding="utf-8", errors="replace")
     lineas = contenido.splitlines()
+    secciones = parsear_secciones_log_scraper(contenido)
     estado_match = re.search(r"Estado final:\s*(\d+)", contenido)
     codigos = [int(valor) for valor in re.findall(r"Codigo de salida:\s*(\d+)", contenido)]
     scrapeados = sum(
@@ -1339,6 +1459,7 @@ def parsear_log_scraper(ruta_log, lineas_detalle=40):
         "advertencias": len(advertencias),
         "ultimo_error": ultimo_error,
         "detalle": "\n".join(lineas[-lineas_detalle:]),
+        "secciones": secciones,
         "ok": ok,
     }
 
@@ -1366,6 +1487,7 @@ def obtener_logs_scraper(limite=5):
                     "advertencias": 0,
                     "ultimo_error": str(error),
                     "detalle": "",
+                    "secciones": [],
                     "ok": False,
                 }
             )
@@ -1488,6 +1610,8 @@ def mostrar_metricas(precios):
 def mostrar_salud_sistema(precios, fuente):
     """Muestra una mini vista de salud operativa del sistema."""
     salud = obtener_salud_scraper()
+    logs_scraper = obtener_logs_scraper(limite=1)
+    ultimo_log_scraper = logs_scraper[0] if logs_scraper else None
     monitoreo = obtener_estado_monitoreo(precios)
     monitoreo_supermercados = obtener_estado_monitoreo_supermercados(precios)
     supermercados_con_huecos = [
@@ -1549,6 +1673,23 @@ def mostrar_salud_sistema(precios, fuente):
                 width="stretch",
                 height=min(260, 86 + len(tabla_monitoreo) * 36),
             )
+
+    if ultimo_log_scraper:
+        tabla_corrida = preparar_tabla_ultima_corrida(ultimo_log_scraper)
+        if not tabla_corrida.empty:
+            with st.expander("Última corrida del scraper", expanded=True):
+                st.caption(
+                    f"{ultimo_log_scraper['archivo']} · "
+                    f"{ultimo_log_scraper['estado']} · "
+                    f"Inicio: {ultimo_log_scraper['inicio'] or 'Sin dato'} · "
+                    f"Fin: {ultimo_log_scraper['fin'] or 'Sin dato'}"
+                )
+                st.dataframe(
+                    tabla_corrida,
+                    hide_index=True,
+                    width="stretch",
+                    height=min(320, 86 + len(tabla_corrida) * 36),
+                )
 
 
 def mostrar_logs_scraper():

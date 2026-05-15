@@ -1,4 +1,8 @@
-from dashboard import obtener_logs_scraper, parsear_log_scraper
+from dashboard import (
+    obtener_logs_scraper,
+    parsear_log_scraper,
+    preparar_tabla_ultima_corrida,
+)
 
 
 def test_parsear_log_scraper_resume_ejecucion_exitosa(tmp_path):
@@ -39,6 +43,18 @@ Estado final: 0
     assert log["errores"] == 0
     assert log["ultimo_error"] == "Sin errores"
     assert log["ok"] is True
+    assert len(log["secciones"]) == 2
+    assert log["secciones"][0]["nombre"] == "Stock"
+    assert log["secciones"][0]["scrapeados"] == 20
+    assert log["secciones"][0]["sqlite"] == 5
+    assert log["secciones"][0]["supabase"] == 20
+    assert log["secciones"][0]["estado"] == "OK"
+
+    tabla = preparar_tabla_ultima_corrida(log)
+
+    assert tabla["Paso"].tolist() == ["Stock", "Superseis"]
+    assert tabla.loc[0, "Scrapeados"] == 20
+    assert tabla.loc[1, "SQLite"] == 3
 
 
 def test_parsear_log_scraper_detecta_error(tmp_path):
@@ -93,6 +109,50 @@ Estado final: 0
     assert log["advertencias"] == 1
     assert log["ultimo_error"] == "Sin errores críticos (1 aviso(s) recuperados)"
     assert log["ok"] is True
+
+
+def test_parsear_log_scraper_resume_avisos_por_supermercado(tmp_path):
+    ruta_log = tmp_path / "scraper-2026-05-15_10-11-31.log"
+    ruta_log.write_text(
+        """
+PreciosPY scraper diario
+Fecha: 2026-05-15 10:11:31 -03
+
+== Casa Rica ==
+Inicio: 2026-05-15 10:42:00 -03
+Error temporal al scrapear Casa Rica Bebidas, pagina 3: fallo de conexion
+Productos scrapeados: 10496
+Productos guardados en SQLite: 10472
+Productos duplicados omitidos antes de Supabase: 24
+Productos sincronizados con Supabase: 10472
+Fin: 2026-05-15 11:03:00 -03
+Codigo de salida: 0
+
+== Sincronizar faltantes SQLite -> Supabase ==
+Inicio: 2026-05-15 11:04:00 -03
+Registros validos en SQLite: 81997
+Claves existentes en Supabase: 86586
+Registros faltantes detectados: 0
+Fin: 2026-05-15 11:05:00 -03
+Codigo de salida: 0
+
+Estado final: 0
+""".strip(),
+        encoding="utf-8",
+    )
+
+    log = parsear_log_scraper(ruta_log)
+    casa_rica = log["secciones"][0]
+    sync_final = log["secciones"][1]
+
+    assert casa_rica["estado"] == "OK"
+    assert casa_rica["advertencias"] == 1
+    assert casa_rica["errores"] == 0
+    assert casa_rica["duplicados"] == 24
+    assert sync_final["nombre"] == "Sincronizar faltantes SQLite -> Supabase"
+    assert sync_final["sqlite_revisados"] == 81997
+    assert sync_final["supabase_existentes"] == 86586
+    assert sync_final["faltantes"] == 0
 
 
 def test_obtener_logs_scraper_respeta_limite(tmp_path, monkeypatch):
