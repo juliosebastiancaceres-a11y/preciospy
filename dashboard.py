@@ -939,6 +939,81 @@ def obtener_colores_supermercados(supermercados):
     return dominio, colores
 
 
+def preparar_terminos_busqueda(texto_busqueda):
+    """Convierte una busqueda vaga en terminos normalizados independientes."""
+    texto_normalizado = normalizar_nombre_comparable(texto_busqueda)
+
+    if not texto_normalizado:
+        return []
+
+    tokens = texto_normalizado.split()
+    unidades = {"L", "ml", "g", "kg"}
+    terminos = []
+    indice = 0
+
+    while indice < len(tokens):
+        token = tokens[indice]
+        siguiente = tokens[indice + 1] if indice + 1 < len(tokens) else ""
+
+        if siguiente in unidades:
+            terminos.append(f"{token} {siguiente}")
+            indice += 2
+            continue
+
+        terminos.append(token)
+        indice += 1
+
+    return terminos
+
+
+def filtrar_por_busqueda_inteligente(precios, texto_busqueda):
+    """Busca por nombre usando terminos separados y nombres normalizados."""
+    texto_busqueda = str(texto_busqueda or "").strip()
+
+    if not texto_busqueda or precios.empty:
+        return precios
+
+    columnas_busqueda = [
+        "nombre_producto",
+        "nombre_normalizado",
+        "clave_matching",
+        "etiqueta_matching",
+    ]
+    columnas_busqueda = [
+        columna for columna in columnas_busqueda if columna in precios.columns
+    ]
+
+    if not columnas_busqueda:
+        return precios
+
+    terminos = preparar_terminos_busqueda(texto_busqueda)
+    filtro = precios["nombre_producto"].str.contains(
+        texto_busqueda,
+        case=False,
+        na=False,
+        regex=False,
+    )
+
+    if terminos:
+        filtro_terminos = pd.Series(True, index=precios.index)
+        for termino in terminos:
+            filtro_termino = pd.Series(False, index=precios.index)
+            for columna in columnas_busqueda:
+                filtro_termino = filtro_termino | precios[columna].astype(
+                    str
+                ).str.contains(
+                    termino,
+                    case=False,
+                    na=False,
+                    regex=False,
+                )
+            filtro_terminos = filtro_terminos & filtro_termino
+
+        filtro = filtro | filtro_terminos
+
+    return precios[filtro].copy()
+
+
 def aplicar_estilo_plotly_legible(grafico):
     """Refuerza contraste de textos, ejes y tooltips en graficos Plotly."""
     color_texto = "#101828"
@@ -1011,24 +1086,7 @@ def filtrar_precios(
 
     texto_busqueda = texto_busqueda.strip()
     if texto_busqueda:
-        texto_normalizado = normalizar_nombre_comparable(texto_busqueda)
-        filtro_nombre_visible = filtrados["nombre_producto"].str.contains(
-            texto_busqueda,
-            case=False,
-            na=False,
-            regex=False,
-        )
-        filtro_nombre_normalizado = False
-        if texto_normalizado:
-            filtro_nombre_normalizado = filtrados["nombre_normalizado"].str.contains(
-                texto_normalizado,
-                case=False,
-                na=False,
-                regex=False,
-            )
-        filtrados = filtrados[
-            filtro_nombre_visible | filtro_nombre_normalizado
-        ]
+        filtrados = filtrar_por_busqueda_inteligente(filtrados, texto_busqueda)
 
     if rango_fecha and "fecha_registro_dt" in filtrados.columns:
         fecha_inicio, fecha_fin = rango_fecha

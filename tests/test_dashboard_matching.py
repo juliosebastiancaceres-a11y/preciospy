@@ -1,6 +1,7 @@
 import pandas as pd
 
 from dashboard import normalizar_precios, preparar_comparacion_supermercados
+from dashboard import filtrar_por_busqueda_inteligente, preparar_terminos_busqueda
 
 
 def test_preparar_comparacion_supermercados_detecta_equivalentes():
@@ -103,3 +104,41 @@ def test_preparar_comparacion_supermercados_ignora_un_solo_supermercado():
     comparacion = preparar_comparacion_supermercados(precios)
 
     assert comparacion.empty
+
+
+def test_preparar_terminos_busqueda_agrupa_numero_y_unidad():
+    assert preparar_terminos_busqueda("coca 1l") == ["coca", "1 L"]
+    assert preparar_terminos_busqueda("aceite 500 ml") == ["aceite", "500 ml"]
+
+
+def test_filtrar_por_busqueda_inteligente_encuentra_texto_vago():
+    precios = normalizar_precios(
+        pd.DataFrame(
+            [
+                {
+                    "supermercado": "Biggie",
+                    "nombre_producto": "Gaseosa Coca Cola Original 1 Litro",
+                    "precio": 9000,
+                    "fecha_registro": "2026-05-15",
+                },
+                {
+                    "supermercado": "Stock",
+                    "nombre_producto": "Coca Cola Zero 2L",
+                    "precio": 12000,
+                    "fecha_registro": "2026-05-15",
+                },
+                {
+                    "supermercado": "Superseis",
+                    "nombre_producto": "Sprite 1L",
+                    "precio": 8500,
+                    "fecha_registro": "2026-05-15",
+                },
+            ]
+        )
+    )
+
+    filtrados = filtrar_por_busqueda_inteligente(precios, "coca 1l")
+
+    assert list(filtrados["nombre_producto"]) == [
+        "Gaseosa Coca Cola Original 1 Litro"
+    ]
