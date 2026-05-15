@@ -150,8 +150,12 @@ python scripts/sync_sqlite_to_supabase.py --apply
 ## Ejecutar el dashboard
 
 ```bash
-streamlit run dashboard.py
+./scripts/run_dashboard.sh
 ```
+
+El script usa siempre `.venv/bin/python -m streamlit` para cargar las
+dependencias instaladas en el entorno virtual del proyecto. Por defecto abre en
+`http://127.0.0.1:8501`; se puede cambiar con `DASHBOARD_PORT`.
 
 El dashboard lee `data/preciospy.db`. Si la base no existe o no tiene datos,
 muestra un mensaje informativo en lugar de fallar.
