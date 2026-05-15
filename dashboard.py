@@ -1307,22 +1307,29 @@ def sumar_valores_log(patron, contenido):
     return sum(int(valor) for valor in re.findall(patron, contenido, flags=re.MULTILINE))
 
 
-def formatear_duracion_corrida(inicio, fin):
-    """Calcula y formatea la duracion de un paso del scraper."""
+def calcular_segundos_corrida(inicio, fin):
+    """Calcula la duracion en segundos de un paso del scraper."""
     if not inicio or not fin:
-        return "Sin dato"
+        return None
 
     inicio_fecha = pd.to_datetime(inicio, errors="coerce", utc=True)
     fin_fecha = pd.to_datetime(fin, errors="coerce", utc=True)
 
     if pd.isna(inicio_fecha) or pd.isna(fin_fecha):
-        return "Sin dato"
+        return None
 
     duracion = fin_fecha - inicio_fecha
     if duracion < timedelta(0):
+        return None
+
+    return int(duracion.total_seconds())
+
+
+def formatear_duracion_segundos(segundos):
+    """Formatea una duracion en segundos para mostrarla en el dashboard."""
+    if segundos is None:
         return "Sin dato"
 
-    segundos = int(duracion.total_seconds())
     horas, resto = divmod(segundos, 3600)
     minutos, segundos = divmod(resto, 60)
 
@@ -1331,6 +1338,11 @@ def formatear_duracion_corrida(inicio, fin):
     if minutos:
         return f"{minutos} min {segundos} s"
     return f"{segundos} s"
+
+
+def formatear_duracion_corrida(inicio, fin):
+    """Calcula y formatea la duracion de un paso del scraper."""
+    return formatear_duracion_segundos(calcular_segundos_corrida(inicio, fin))
 
 
 def parsear_secciones_log_scraper(contenido):
@@ -1355,6 +1367,9 @@ def parsear_secciones_log_scraper(contenido):
     detalles = []
     for seccion in secciones:
         bloque = "\n".join(seccion["lineas"])
+        inicio = extraer_primer_valor_log(r"Inicio:\s*(.+)", bloque)
+        fin = extraer_ultimo_valor_log(r"Fin:\s*(.+)", bloque)
+        duracion_segundos = calcular_segundos_corrida(inicio, fin)
         codigo_texto = extraer_ultimo_valor_log(r"Codigo de salida:\s*(\d+)", bloque)
         codigo = int(codigo_texto) if codigo_texto else None
         ok = codigo == 0
@@ -1369,14 +1384,12 @@ def parsear_secciones_log_scraper(contenido):
         detalles.append(
             {
                 "nombre": seccion["nombre"],
-                "inicio": extraer_primer_valor_log(r"Inicio:\s*(.+)", bloque),
-                "fin": extraer_ultimo_valor_log(r"Fin:\s*(.+)", bloque),
+                "inicio": inicio,
+                "fin": fin,
                 "codigo": codigo,
                 "estado": "OK" if ok else "Error",
-                "duracion": formatear_duracion_corrida(
-                    extraer_primer_valor_log(r"Inicio:\s*(.+)", bloque),
-                    extraer_ultimo_valor_log(r"Fin:\s*(.+)", bloque),
-                ),
+                "duracion": formatear_duracion_segundos(duracion_segundos),
+                "duracion_segundos": duracion_segundos,
                 "scrapeados": sumar_valores_log(
                     r"Productos scrapeados:\s*(\d+)", bloque
                 ),
@@ -1491,6 +1504,92 @@ def colorear_tabla_monitoreo_corrida(fila):
         fondo = "background-color: #D1FADF; color: #054F31;"
 
     return [fondo if columna == "Estado" else "" for columna in fila.index]
+
+
+def obtener_umbral_duracion_corrida(nombre):
+    """Define umbrales simples para alertar duraciones anormales."""
+    if nombre == "Casa Rica":
+        return 6 * 60 * 60
+    if nombre == "Sincronizar faltantes SQLite -> Supabase":
+        return 15 * 60
+    return 60 * 60
+
+
+def preparar_alertas_monitoreo_corrida(log):
+    """Genera alertas accionables sobre la ultima corrida del scraper."""
+    alertas = []
+
+    for seccion in log.get("secciones", []):
+        nombre = simplificar_nombre_paso_corrida(seccion["nombre"])
+        es_sync_final = seccion["nombre"] == "Sincronizar faltantes SQLite -> Supabase"
+
+        if seccion["estado"] != "OK" or seccion["errores"] > 0:
+            detalle = seccion["ultimo_error"] or "El paso terminó con error."
+            alertas.append(
+                {
+                    "nivel": "error",
+                    "titulo": f"{nombre} falló",
+                    "detalle": detalle,
+                }
+            )
+            continue
+
+        if not es_sync_final and seccion["scrapeados"] == 0:
+            alertas.append(
+                {
+                    "nivel": "warning",
+                    "titulo": f"{nombre} no trajo productos",
+                    "detalle": "Revisá si cambió la página o si el sitio no respondió.",
+                }
+            )
+
+        if seccion["advertencias"] > 0:
+            alertas.append(
+                {
+                    "nivel": "warning",
+                    "titulo": f"{nombre} terminó con avisos",
+                    "detalle": f"{seccion['advertencias']} aviso(s) recuperados durante la corrida.",
+                }
+            )
+
+        umbral = obtener_umbral_duracion_corrida(seccion["nombre"])
+        duracion = seccion["duracion_segundos"]
+        if duracion is not None and duracion > umbral:
+            alertas.append(
+                {
+                    "nivel": "warning",
+                    "titulo": f"{nombre} tardó más de lo esperado",
+                    "detalle": f"Duración: {seccion['duracion']}.",
+                }
+            )
+
+    if not alertas and log.get("ok"):
+        alertas.append(
+            {
+                "nivel": "success",
+                "titulo": "Última corrida sin alertas",
+                "detalle": "Todos los pasos terminaron dentro de los valores esperados.",
+            }
+        )
+
+    return alertas
+
+
+def mostrar_alertas_monitoreo_corrida(log):
+    """Muestra alertas operativas de la ultima corrida."""
+    alertas = preparar_alertas_monitoreo_corrida(log)
+
+    for alerta in alertas[:5]:
+        mensaje = f"{alerta['titulo']}: {alerta['detalle']}"
+        if alerta["nivel"] == "error":
+            st.error(mensaje)
+        elif alerta["nivel"] == "warning":
+            st.warning(mensaje)
+        else:
+            st.success(mensaje)
+
+    if len(alertas) > 5:
+        st.caption(f"{len(alertas) - 5} alerta(s) más en la tabla de monitoreo.")
 
 
 def parsear_log_scraper(ruta_log, lineas_detalle=40):
@@ -1769,6 +1868,7 @@ def mostrar_salud_sistema(precios, fuente):
                     f"Inicio: {ultimo_log_scraper['inicio'] or 'Sin dato'} · "
                     f"Fin: {ultimo_log_scraper['fin'] or 'Sin dato'}"
                 )
+                mostrar_alertas_monitoreo_corrida(ultimo_log_scraper)
                 st.dataframe(
                     tabla_corrida.style.apply(
                         colorear_tabla_monitoreo_corrida,

@@ -1,6 +1,7 @@
 from dashboard import (
     obtener_logs_scraper,
     parsear_log_scraper,
+    preparar_alertas_monitoreo_corrida,
     preparar_tabla_monitoreo_corrida,
     preparar_tabla_ultima_corrida,
 )
@@ -51,6 +52,7 @@ Estado final: 0
     assert log["secciones"][0]["supabase"] == 20
     assert log["secciones"][0]["estado"] == "OK"
     assert log["secciones"][0]["duracion"] == "20 s"
+    assert log["secciones"][0]["duracion_segundos"] == 20
 
     tabla = preparar_tabla_ultima_corrida(log)
 
@@ -71,6 +73,16 @@ Estado final: 0
         "Pendientes",
     ]
     assert tabla_monitoreo["Estado"].tolist() == ["OK", "OK"]
+
+    alertas = preparar_alertas_monitoreo_corrida(log)
+
+    assert alertas == [
+        {
+            "nivel": "success",
+            "titulo": "Última corrida sin alertas",
+            "detalle": "Todos los pasos terminaron dentro de los valores esperados.",
+        }
+    ]
 
 
 def test_parsear_log_scraper_detecta_error(tmp_path):
@@ -177,6 +189,49 @@ Estado final: 0
     assert tabla_monitoreo.loc[1, "Paso"] == "Sync final"
     assert tabla_monitoreo.loc[1, "Sincronizados"] == 81997
     assert tabla_monitoreo.loc[1, "Duración"] == "1 min 0 s"
+
+    alertas = preparar_alertas_monitoreo_corrida(log)
+
+    assert len(alertas) == 1
+    assert alertas[0]["nivel"] == "warning"
+    assert alertas[0]["titulo"] == "Casa Rica terminó con avisos"
+
+
+def test_preparar_alertas_monitoreo_corrida_detecta_ceros_y_lentitud(tmp_path):
+    ruta_log = tmp_path / "scraper-2026-05-16_06-00-00.log"
+    ruta_log.write_text(
+        """
+PreciosPY scraper diario
+Fecha: 2026-05-16 06:00:00 -03
+
+== Stock ==
+Inicio: 2026-05-16 06:00:00 -03
+Productos scrapeados: 0
+Productos guardados en SQLite: 0
+Productos sincronizados con Supabase: 0
+Fin: 2026-05-16 06:00:20 -03
+Codigo de salida: 0
+
+== Biggie ==
+Inicio: 2026-05-16 06:00:20 -03
+Productos scrapeados: 100
+Productos guardados en SQLite: 100
+Productos sincronizados con Supabase: 100
+Fin: 2026-05-16 07:30:20 -03
+Codigo de salida: 0
+
+Estado final: 0
+""".strip(),
+        encoding="utf-8",
+    )
+
+    log = parsear_log_scraper(ruta_log)
+    alertas = preparar_alertas_monitoreo_corrida(log)
+
+    titulos = [alerta["titulo"] for alerta in alertas]
+
+    assert "Stock no trajo productos" in titulos
+    assert "Biggie tardó más de lo esperado" in titulos
 
 
 def test_obtener_logs_scraper_respeta_limite(tmp_path, monkeypatch):
