@@ -226,16 +226,91 @@ def _formatear_numero_unidad(numero):
 
 def _normalizar_token_matching(token):
     sinonimos = {
+        "azuc": "azucar",
+        "azucares": "azucar",
         "choc": "chocolate",
         "choco": "chocolate",
         "clasica": "clasico",
         "clasicos": "clasico",
+        "light": "zero",
         "originales": "original",
         "ret": "retornable",
+        "retorn": "retornable",
         "desc": "descartable",
         "descart": "descartable",
+        "un": "unidades",
+        "uni": "unidades",
+        "unidad": "unidades",
+        "u": "unidades",
     }
     return sinonimos.get(token, token)
+
+
+def _normalizar_tokens_productos(tokens):
+    """Normaliza abreviaturas comerciales antes de comparar o buscar."""
+    tokens_normalizados = []
+    indice = 0
+
+    while indice < len(tokens):
+        token = tokens[indice]
+        siguiente = tokens[indice + 1] if indice + 1 < len(tokens) else ""
+
+        if token == "s" and siguiente in {"azuc", "azucar", "azucares"}:
+            tokens_normalizados.append("sin")
+            tokens_normalizados.append("azucar")
+            indice += 2
+            continue
+
+        if token == "0" and siguiente in {"azuc", "azucar", "azucares"}:
+            tokens_normalizados.append("sin")
+            tokens_normalizados.append("azucar")
+            indice += 2
+            continue
+
+        if token in {"sin", "zero"} and siguiente in {"azuc", "azucar", "azucares"}:
+            tokens_normalizados.append("sin")
+            tokens_normalizados.append("azucar")
+            indice += 2
+            continue
+
+        if token == "zero":
+            tokens_normalizados.append("sin")
+            tokens_normalizados.append("azucar")
+            indice += 1
+            continue
+
+        if token == "pack" and siguiente and _parsear_numero(siguiente) is not None:
+            tokens_normalizados.append(siguiente)
+            tokens_normalizados.append("unidades")
+            indice += 2
+            continue
+
+        if token == "pack":
+            indice += 1
+            continue
+
+        if token == "x" and siguiente and _parsear_numero(siguiente) is not None:
+            tokens_normalizados.append(siguiente)
+            tokens_normalizados.append("unidades")
+            indice += 2
+            continue
+
+        if _parsear_numero(token) is not None and siguiente in {
+            "un",
+            "uni",
+            "unidad",
+            "unidades",
+            "u",
+        }:
+            tokens_normalizados.append(token)
+            tokens_normalizados.append("unidades")
+            indice += 2
+            continue
+
+        tokens_normalizados.append(_normalizar_token_matching(token))
+        indice += 1
+
+    return tokens_normalizados
 
 
 def _extraer_tokens_matching(nombre):
@@ -244,7 +319,7 @@ def _extraer_tokens_matching(nombre):
     if not nombre_comparable:
         return [], []
 
-    tokens = nombre_comparable.split()
+    tokens = _normalizar_tokens_productos(nombre_comparable.split())
     unidades_medida = {"L", "ml", "g", "kg"}
     palabras_omitidas = {
         "a",
@@ -256,6 +331,7 @@ def _extraer_tokens_matching(nombre):
         "del",
         "el",
         "envase",
+        "gaseosa",
         "la",
         "las",
         "los",
@@ -278,7 +354,6 @@ def _extraer_tokens_matching(nombre):
             indice += 2
             continue
 
-        token = _normalizar_token_matching(token)
         if token not in palabras_omitidas:
             tokens_producto.append(token)
 
@@ -300,6 +375,7 @@ def normalizar_nombre_comparable(nombre):
     texto = re.sub(r"[^a-z0-9,.]+", " ", texto)
     tokens = [token.strip(".,") for token in texto.split()]
     tokens = [token for token in tokens if token]
+    tokens = _normalizar_tokens_productos(tokens)
 
     unidades_litro = {"l", "lt", "lts", "litro", "litros"}
     unidades_mililitro = {"ml", "mililitro", "mililitros", "cc"}

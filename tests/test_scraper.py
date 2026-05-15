@@ -50,6 +50,29 @@ def test_normalizar_nombre_comparable_litros():
     )
 
 
+def test_normalizar_nombre_comparable_abreviaturas_comerciales():
+    assert (
+        normalizar_nombre_comparable("GASEOSA S/AZUC 1LT COCA-COLA")
+        == "gaseosa sin azucar 1 L coca cola"
+    )
+    assert (
+        normalizar_nombre_comparable("Coca Cola Zero 1 Litro")
+        == "coca cola sin azucar 1 L"
+    )
+    assert (
+        normalizar_nombre_comparable("Coca Cola RET 2L")
+        == "coca cola retornable 2 L"
+    )
+    assert (
+        normalizar_nombre_comparable("Pack Coca Cola x4 1L")
+        == "coca cola 4 unidades 1 L"
+    )
+    assert (
+        normalizar_nombre_comparable("Coca Cola 4U 1L")
+        == "coca cola 4 unidades 1 L"
+    )
+
+
 def test_normalizar_nombre_comparable_con_acentos_y_peso():
     assert normalizar_nombre_comparable("Azúcar Orgánica 1 KG") == "azucar organica 1 kg"
     assert normalizar_nombre_comparable("Yerba mate 500 gramos") == "yerba mate 500 g"
@@ -58,11 +81,11 @@ def test_normalizar_nombre_comparable_con_acentos_y_peso():
 def test_obtener_clave_matching_producto_ignora_relleno_y_orden():
     assert (
         obtener_clave_matching_producto("Gaseosa Coca Cola Original Botella 2 Litros")
-        == "coca cola gaseosa original 2 L"
+        == "coca cola original 2 L"
     )
     assert (
         obtener_clave_matching_producto("Coca-Cola sabor original gaseosa 2000ml")
-        == "coca cola gaseosa original 2 L"
+        == "coca cola original 2 L"
     )
 
 
@@ -73,7 +96,7 @@ def test_obtener_etiqueta_matching_producto_conserva_orden_legible():
     )
     assert (
         obtener_etiqueta_matching_producto("Coca-Cola sabor original gaseosa 2000ml")
-        == "coca cola original gaseosa 2 L"
+        == "coca cola original 2 L"
     )
 
 
@@ -81,6 +104,26 @@ def test_obtener_clave_matching_producto_evita_falsos_positivos_basicos():
     assert obtener_clave_matching_producto(
         "Coca Cola Original 2L"
     ) != obtener_clave_matching_producto("Coca Cola Zero 2L")
+
+
+def test_obtener_clave_matching_producto_unifica_sin_azucar():
+    assert (
+        obtener_clave_matching_producto("GASEOSA S/AZUC 1LT COCA-COLA")
+        == obtener_clave_matching_producto("Coca Cola sin azúcar 1 litro")
+        == obtener_clave_matching_producto("Coca Cola Zero 1L")
+    )
+
+
+def test_obtener_clave_matching_producto_unifica_retornable():
+    assert obtener_clave_matching_producto(
+        "Gaseosa Coca Cola RET 2L"
+    ) == obtener_clave_matching_producto("Coca Cola retornable 2 litros")
+
+
+def test_obtener_clave_matching_producto_unifica_pack():
+    assert obtener_clave_matching_producto(
+        "Pack Coca Cola x4 1L"
+    ) == obtener_clave_matching_producto("Coca Cola 4 unidades 1 litro")
 
 
 def test_construir_producto_omite_precio_invalido():

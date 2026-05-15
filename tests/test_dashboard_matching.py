@@ -59,7 +59,7 @@ def test_preparar_comparacion_supermercados_detecta_match_flexible():
 
     assert len(comparacion) == 1
     fila = comparacion.iloc[0]
-    assert fila["Producto comparable"] == "coca cola original gaseosa 2 L"
+    assert fila["Producto comparable"] == "coca cola original 2 L"
     assert fila["Supermercado más barato"] == "Superseis"
     assert fila["Coincidencia"] == "Flexible"
 
