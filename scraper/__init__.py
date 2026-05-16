@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin
+import os
 import re
 import time
 import unicodedata
@@ -17,11 +18,32 @@ URL_BIGGIE = "https://www.biggie.com.py/"
 URL_ARETE = "https://www.arete.com.py/"
 URL_API_BIGGIE = "https://api.app.biggie.com.py/api/"
 TAMANO_PAGINA_BIGGIE = 24
-REQUEST_TIMEOUT = 20
-REQUEST_REINTENTOS = 3
-PAUSA_ENTRE_PAGINAS = 1
-PAUSA_REINTENTO = 5
-INTERVALO_PROGRESO_PAGINAS = 25
+
+
+def leer_entero_entorno(nombre, defecto):
+    """Lee un entero desde entorno sin romper si viene invalido."""
+    try:
+        return int(os.getenv(nombre, defecto))
+    except (TypeError, ValueError):
+        return defecto
+
+
+def leer_float_entorno(nombre, defecto):
+    """Lee un decimal desde entorno sin romper si viene invalido."""
+    try:
+        return float(os.getenv(nombre, defecto))
+    except (TypeError, ValueError):
+        return defecto
+
+
+REQUEST_TIMEOUT = leer_entero_entorno("PRECIOSPY_REQUEST_TIMEOUT", 20)
+REQUEST_REINTENTOS = leer_entero_entorno("PRECIOSPY_REQUEST_REINTENTOS", 3)
+PAUSA_ENTRE_PAGINAS = leer_float_entorno("PRECIOSPY_PAUSA_ENTRE_PAGINAS", 1)
+PAUSA_REINTENTO = leer_float_entorno("PRECIOSPY_PAUSA_REINTENTO", 5)
+INTERVALO_PROGRESO_PAGINAS = leer_entero_entorno(
+    "PRECIOSPY_INTERVALO_PROGRESO_PAGINAS",
+    25,
+)
 RUTA_CATEGORIAS_STOCK = (
     Path(__file__).resolve().parent.parent / "stock_categorias_urls.txt"
 )

@@ -11,6 +11,8 @@ from scraper import (
     extraer_productos_casa_rica,
     extraer_productos_los_jardines,
     imprimir_progreso_scraper,
+    leer_entero_entorno,
+    leer_float_entorno,
     limpiar_precio,
     normalizar_nombre_comparable,
     normalizar_nombre_producto,
@@ -378,3 +380,19 @@ def test_descargar_html_reintenta_errores_temporales():
 
     assert html == "<html>ok</html>"
     assert sesion.intentos == 2
+
+
+def test_leer_entorno_numerico_usa_defecto_si_es_invalido(monkeypatch):
+    monkeypatch.setenv("PRECIOSPY_TEST_ENTERO", "abc")
+    monkeypatch.setenv("PRECIOSPY_TEST_FLOAT", "abc")
+
+    assert leer_entero_entorno("PRECIOSPY_TEST_ENTERO", 25) == 25
+    assert leer_float_entorno("PRECIOSPY_TEST_FLOAT", 0.2) == 0.2
+
+
+def test_leer_entorno_numerico_parsea_valores(monkeypatch):
+    monkeypatch.setenv("PRECIOSPY_TEST_ENTERO", "50")
+    monkeypatch.setenv("PRECIOSPY_TEST_FLOAT", "0.25")
+
+    assert leer_entero_entorno("PRECIOSPY_TEST_ENTERO", 25) == 50
+    assert leer_float_entorno("PRECIOSPY_TEST_FLOAT", 1) == 0.25

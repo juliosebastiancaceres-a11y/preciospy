@@ -136,6 +136,17 @@ El scraper de Biggie usa su API publica de categorias y articulos, paginando con
 El scraper de Areté usa la paginacion del catalogo con el formato `categoria.2`,
 `categoria.3`, etc., igual que Los Jardines y Casa Rica.
 
+La corrida diaria usa pausas mas cortas que la ejecucion manual para terminar en
+menos tiempo sin cambiar la cobertura. Se puede ajustar con variables de entorno:
+
+```bash
+PRECIOSPY_PAUSA_ENTRE_PAGINAS=0.2
+PRECIOSPY_PAUSA_REINTENTO=2
+PRECIOSPY_REQUEST_TIMEOUT=20
+PRECIOSPY_REQUEST_REINTENTOS=3
+PRECIOSPY_INTERVALO_PROGRESO_PAGINAS=25
+```
+
 ## Sincronizar historicos SQLite a Supabase
 
 Revisar registros locales que todavia no estan en Supabase:

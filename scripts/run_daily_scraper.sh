@@ -2,6 +2,11 @@
 set -u
 
 export PATH="/usr/local/bin:/usr/bin:/bin"
+export PRECIOSPY_PAUSA_ENTRE_PAGINAS="${PRECIOSPY_PAUSA_ENTRE_PAGINAS:-0.2}"
+export PRECIOSPY_PAUSA_REINTENTO="${PRECIOSPY_PAUSA_REINTENTO:-2}"
+export PRECIOSPY_REQUEST_TIMEOUT="${PRECIOSPY_REQUEST_TIMEOUT:-20}"
+export PRECIOSPY_REQUEST_REINTENTOS="${PRECIOSPY_REQUEST_REINTENTOS:-3}"
+export PRECIOSPY_INTERVALO_PROGRESO_PAGINAS="${PRECIOSPY_INTERVALO_PROGRESO_PAGINAS:-25}"
 
 PROJECT_DIR="/home/juliosc/preciospy"
 LOG_DIR="$PROJECT_DIR/logs"
@@ -55,6 +60,10 @@ run_scraper() {
     echo "Log: $LOG_FILE"
     echo "Fecha: $(date '+%Y-%m-%d %H:%M:%S %Z')"
     echo "Python: $PYTHON_BIN"
+    echo "Pausa entre paginas: $PRECIOSPY_PAUSA_ENTRE_PAGINAS s"
+    echo "Pausa reintento: $PRECIOSPY_PAUSA_REINTENTO s"
+    echo "Timeout request: $PRECIOSPY_REQUEST_TIMEOUT s"
+    echo "Reintentos request: $PRECIOSPY_REQUEST_REINTENTOS"
 
     run_scraper \
         "Stock" \
