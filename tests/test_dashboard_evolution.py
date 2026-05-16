@@ -107,7 +107,7 @@ def test_obtener_colores_supermercados_reconocibles():
         "Biggie": "#C6051D",
         "Los Jardines": "#D6A300",
         "Casa Rica": "#101828",
-        "Areté": "#E84B8A",
+        "Areté": "#38BDF8",
         "Stock": "#0038A8",
         "Superseis": "#2E7D32",
     }
@@ -123,6 +123,18 @@ def test_reconciliar_supermercados_seleccionados_agrega_nuevos():
         supermercados,
         supermercados_anteriores,
     ) == ["Stock", "Superseis", "Biggie", "Casa Rica"]
+
+
+def test_reconciliar_supermercados_seleccionados_agrega_si_antes_estaban_todos():
+    seleccion = ["Biggie", "Casa Rica", "Stock", "Superseis"]
+    supermercados = ["Areté", "Biggie", "Casa Rica", "Stock", "Superseis"]
+    supermercados_anteriores = ["Biggie", "Casa Rica", "Stock", "Superseis"]
+
+    assert reconciliar_supermercados_seleccionados(
+        seleccion,
+        supermercados,
+        supermercados_anteriores,
+    ) == ["Biggie", "Casa Rica", "Stock", "Superseis", "Areté"]
 
 
 def test_reconciliar_supermercados_seleccionados_respeta_removidos():

@@ -783,22 +783,27 @@ def normalizar_precios(precios):
         if columna not in precios.columns:
             precios[columna] = None
 
+    precios = precios.dropna(subset=["nombre_producto", "supermercado"]).copy()
     precios["precio"] = pd.to_numeric(precios["precio"], errors="coerce")
     precios["fecha_registro"] = precios["fecha_registro"].astype(str)
     precios["fecha_registro_dt"] = pd.to_datetime(
         precios["fecha_registro"],
         errors="coerce",
     )
-    precios["nombre_normalizado"] = precios["nombre_producto"].apply(
-        normalizar_nombre_comparable
-    )
-    precios["clave_matching"] = precios["nombre_producto"].apply(
-        obtener_clave_matching_producto
-    )
-    precios["etiqueta_matching"] = precios["nombre_producto"].apply(
-        obtener_etiqueta_matching_producto
-    )
-    return precios.dropna(subset=["precio", "nombre_producto", "supermercado"])
+    nombres_unicos = precios["nombre_producto"].dropna().unique()
+    nombres_normalizados = {
+        nombre: normalizar_nombre_comparable(nombre) for nombre in nombres_unicos
+    }
+    claves_matching = {
+        nombre: obtener_clave_matching_producto(nombre) for nombre in nombres_unicos
+    }
+    etiquetas_matching = {
+        nombre: obtener_etiqueta_matching_producto(nombre) for nombre in nombres_unicos
+    }
+    precios["nombre_normalizado"] = precios["nombre_producto"].map(nombres_normalizados)
+    precios["clave_matching"] = precios["nombre_producto"].map(claves_matching)
+    precios["etiqueta_matching"] = precios["nombre_producto"].map(etiquetas_matching)
+    return precios.dropna(subset=["precio"])
 
 
 def cargar_precios_sqlite():
@@ -871,12 +876,12 @@ def cargar_precios_supabase():
 @st.cache_data(show_spinner=False, ttl=300)
 def cargar_precios_con_fuente():
     """Carga precios y retorna la fuente activa."""
-    precios = cargar_precios_supabase()
+    precios = cargar_precios_sqlite()
 
     if not precios.empty:
-        return precios, "Supabase"
+        return precios, "SQLite local"
 
-    return cargar_precios_sqlite(), "SQLite local"
+    return cargar_precios_supabase(), "Supabase"
 
 
 def cargar_precios():
@@ -904,12 +909,21 @@ def reconciliar_supermercados_seleccionados(
         for supermercado in seleccion_guardada
         if supermercado in supermercados
     ]
-    supermercados_anteriores = set(supermercados_anteriores or supermercados)
+    supermercados_anteriores_lista = list(supermercados_anteriores or supermercados)
+    supermercados_anteriores = set(supermercados_anteriores_lista)
+    seleccion_era_total = bool(supermercados_anteriores) and supermercados_anteriores.issubset(
+        set(seleccion_guardada)
+    )
+
     supermercados_nuevos = [
         supermercado
         for supermercado in supermercados
         if supermercado not in supermercados_anteriores
     ]
+
+    if seleccion_era_total:
+        return seleccion_valida + supermercados_nuevos
+
     return seleccion_valida + supermercados_nuevos
 
 
@@ -921,10 +935,10 @@ def obtener_colores_supermercados(supermercados):
         "biggie": "#C6051D",
         "los jardines": "#D6A300",
         "casa rica": "#101828",
-        "areté": "#E84B8A",
-        "arete": "#E84B8A",
+        "areté": "#38BDF8",
+        "arete": "#38BDF8",
     }
-    paleta_respaldo = ["#0038A8", "#12805C", "#7C3AED", "#C47A00", "#E84B8A"]
+    paleta_respaldo = ["#0038A8", "#12805C", "#7C3AED", "#C47A00", "#38BDF8"]
     dominio = []
     colores = []
 
@@ -1512,6 +1526,8 @@ def obtener_umbral_duracion_corrida(nombre):
     """Define umbrales simples para alertar duraciones anormales."""
     if nombre == "Casa Rica":
         return 6 * 60 * 60
+    if nombre == "Areté":
+        return 2 * 60 * 60
     if nombre == "Sincronizar faltantes SQLite -> Supabase":
         return 15 * 60
     return 60 * 60
@@ -1848,11 +1864,11 @@ def mostrar_salud_sistema(precios, fuente):
             unsafe_allow_html=True,
         )
 
-    if supermercados_con_huecos:
+    if monitoreo_supermercados:
         tabla_monitoreo = preparar_tabla_monitoreo_supermercados(
-            supermercados_con_huecos
+            monitoreo_supermercados
         )
-        with st.expander("Detalle de monitoreo por supermercado", expanded=False):
+        with st.expander("Cobertura de monitoreo por supermercado", expanded=False):
             st.dataframe(
                 tabla_monitoreo,
                 hide_index=True,
