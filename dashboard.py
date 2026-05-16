@@ -2656,7 +2656,7 @@ def mostrar_alertas_precios(precios):
     )
 
 
-def preparar_opciones_evolucion(precios):
+def preparar_opciones_evolucion(precios, minimo_fechas=1):
     """Prepara productos equivalentes disponibles para evolucion historica."""
     if precios.empty:
         return pd.DataFrame()
@@ -2687,6 +2687,11 @@ def preparar_opciones_evolucion(precios):
         )
         .sort_values(["supermercados", "fechas", "producto"], ascending=[False, False, True])
     )
+    opciones = opciones[opciones["fechas"] >= minimo_fechas].copy()
+
+    if opciones.empty:
+        return pd.DataFrame()
+
     opciones["label"] = opciones.apply(
         lambda fila: (
             f"{fila['producto']} · {int(fila['supermercados'])} supermercado(s) · "
@@ -2741,6 +2746,15 @@ def filtrar_evolucion_supermercados(agrupado, supermercados):
     return agrupado[agrupado["supermercado"].isin(supermercados)].copy()
 
 
+def filtrar_precios_evolucion(precios, supermercados, texto_busqueda=""):
+    """Limita la lista de productos historicos a la seleccion visible."""
+    if precios.empty or not supermercados:
+        return pd.DataFrame(columns=precios.columns)
+
+    filtrados = precios[precios["supermercado"].isin(supermercados)].copy()
+    return filtrar_por_busqueda_inteligente(filtrados, texto_busqueda)
+
+
 def preparar_resumen_evolucion(agrupado):
     """Prepara indicadores utiles por supermercado para la evolucion."""
     if agrupado.empty:
@@ -2783,7 +2797,12 @@ def obtener_configuracion_evolucion(agrupado, modo, seleccion):
         seleccionados = seleccion or supermercados
         return filtrar_evolucion_supermercados(agrupado, seleccionados), True
 
-    seleccionado = seleccion or (supermercados[0] if supermercados else None)
+    if isinstance(seleccion, list):
+        seleccionado = seleccion[0] if seleccion else None
+    else:
+        seleccionado = seleccion
+
+    seleccionado = seleccionado or (supermercados[0] if supermercados else None)
     if not seleccionado:
         return pd.DataFrame(columns=agrupado.columns), False
 
@@ -2794,7 +2813,7 @@ def mostrar_evolucion_precios(precios):
     """Muestra la evolucion historica de un producto por supermercado."""
     mostrar_encabezado_seccion(
         "Evolución de precios",
-        "Elegí un producto equivalente y compará cómo se movió su precio en el tiempo.",
+        "Elegí la vista, buscá un producto y revisá su historial.",
         "Histórico",
     )
 
@@ -2802,19 +2821,77 @@ def mostrar_evolucion_precios(precios):
         st.info("No encontramos productos con esos filtros.")
         return
 
-    opciones = preparar_opciones_evolucion(precios)
+    supermercados_base = sorted(precios["supermercado"].dropna().unique())
+    if not supermercados_base:
+        st.info("No hay supermercados disponibles para analizar.")
+        return
+    supermercado_inicial = "Stock" if "Stock" in supermercados_base else supermercados_base[0]
+
+    with st.container(border=True):
+        columnas_control = st.columns([1.1, 1.4])
+        modo_evolucion = columnas_control[0].radio(
+            "Vista del gráfico",
+            ["Ver un supermercado", "Comparar supermercados"],
+            horizontal=True,
+            key="modo_evolucion_precios_v2",
+        )
+
+        if modo_evolucion == "Comparar supermercados":
+            seleccion_guardada = st.session_state.get(
+                "supermercados_evolucion_comparar_v2",
+                supermercados_base,
+            )
+            st.session_state["supermercados_evolucion_comparar_v2"] = [
+                supermercado
+                for supermercado in seleccion_guardada
+                if supermercado in supermercados_base
+            ] or supermercados_base
+            seleccion_supermercados = columnas_control[1].multiselect(
+                "Supermercados a comparar",
+                supermercados_base,
+                key="supermercados_evolucion_comparar_v2",
+            )
+        else:
+            seleccion_guardada = st.session_state.get("supermercado_evolucion_unico_v2")
+            if seleccion_guardada not in supermercados_base:
+                st.session_state["supermercado_evolucion_unico_v2"] = supermercado_inicial
+            seleccion_supermercados = columnas_control[1].selectbox(
+                "Supermercado para ver",
+                supermercados_base,
+                key="supermercado_evolucion_unico_v2",
+            )
+
+        texto_busqueda_evolucion = st.text_input(
+            "Buscar producto en esta vista",
+            placeholder="Ej. coca 1l, leche, arroz",
+            key="busqueda_evolucion_producto_v2",
+        )
+
+    supermercados_seleccionados = (
+        seleccion_supermercados
+        if isinstance(seleccion_supermercados, list)
+        else [seleccion_supermercados]
+    )
+    precios_para_opciones = filtrar_precios_evolucion(
+        precios,
+        supermercados_seleccionados,
+        texto_busqueda_evolucion,
+    )
+    opciones = preparar_opciones_evolucion(precios_para_opciones, minimo_fechas=2)
     if opciones.empty:
-        st.info("No hay productos disponibles para analizar.")
+        st.info(
+            "No hay productos con historial suficiente para esa búsqueda y supermercado."
+        )
         return
 
     etiquetas = dict(zip(opciones["label"], opciones["clave_matching"]))
     with st.container(border=True):
         etiqueta_seleccionada = st.selectbox(
-            "Producto equivalente para analizar",
+            "Producto para analizar",
             list(etiquetas.keys()),
             help=(
                 "La evolución usa matching de productos, por eso puede unir nombres "
-                "equivalentes entre supermercados."
+                "equivalentes solo dentro de los supermercados seleccionados."
             ),
         )
     clave_seleccionada = etiquetas[etiqueta_seleccionada]
@@ -2824,34 +2901,10 @@ def mostrar_evolucion_precios(precios):
         st.info("No hay suficientes datos históricos para mostrar una evolución.")
         return
 
-    supermercados_disponibles = sorted(agrupado["supermercado"].dropna().unique())
-    with st.container(border=True):
-        columnas_control = st.columns([1.1, 1.4])
-        modo_evolucion = columnas_control[0].radio(
-            "Vista del gráfico",
-            ["Ver un supermercado", "Comparar supermercados"],
-            horizontal=True,
-            key="modo_evolucion_precios",
-        )
-
-        if modo_evolucion == "Comparar supermercados":
-            seleccion_supermercados = columnas_control[1].multiselect(
-                "Supermercados a comparar",
-                supermercados_disponibles,
-                default=supermercados_disponibles,
-                key="supermercados_evolucion_comparar",
-            )
-        else:
-            seleccion_supermercados = columnas_control[1].selectbox(
-                "Supermercado para ver",
-                supermercados_disponibles,
-                key="supermercado_evolucion_unico",
-            )
-
     evolucion_filtrada, comparar = obtener_configuracion_evolucion(
         agrupado,
         modo_evolucion,
-        seleccion_supermercados,
+        supermercados_seleccionados,
     )
 
     if evolucion_filtrada.empty:
@@ -2957,7 +3010,7 @@ def mostrar_dashboard():
 
     mostrar_grafico(precios_filtrados)
     mostrar_comparacion_supermercados(precios_filtrados)
-    mostrar_evolucion_precios(precios_filtrados)
+    mostrar_evolucion_precios(precios)
     mostrar_tabla(precios_filtrados)
     mostrar_alertas_precios(precios_filtrados)
     mostrar_exportaciones(precios_filtrados)

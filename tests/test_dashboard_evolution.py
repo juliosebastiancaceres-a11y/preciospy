@@ -2,6 +2,7 @@ import pandas as pd
 
 from dashboard import (
     filtrar_evolucion_supermercados,
+    filtrar_precios_evolucion,
     normalizar_precios,
     obtener_configuracion_evolucion,
     obtener_colores_supermercados,
@@ -55,6 +56,38 @@ def test_preparar_opciones_evolucion_usa_clave_matching():
     assert "coca cola 2 L" in opciones.iloc[0]["label"]
 
 
+def test_preparar_opciones_evolucion_filtra_por_minimo_fechas():
+    precios = normalizar_precios(
+        pd.DataFrame(
+            [
+                {
+                    "supermercado": "Stock",
+                    "nombre_producto": "Coca Cola 1L",
+                    "precio": 8500,
+                    "fecha_registro": "2026-05-07",
+                },
+                {
+                    "supermercado": "Stock",
+                    "nombre_producto": "Pepsi 1L",
+                    "precio": 7600,
+                    "fecha_registro": "2026-05-07",
+                },
+                {
+                    "supermercado": "Stock",
+                    "nombre_producto": "Pepsi 1L",
+                    "precio": 7800,
+                    "fecha_registro": "2026-05-08",
+                },
+            ]
+        )
+    )
+
+    opciones = preparar_opciones_evolucion(precios, minimo_fechas=2)
+
+    assert len(opciones) == 1
+    assert opciones.iloc[0]["clave_matching"] == "pepsi 1 L"
+
+
 def test_preparar_evolucion_producto_compara_nombres_equivalentes():
     precios = _precios_equivalentes()
     evolucion = preparar_evolucion_producto(precios, "coca cola 2 L")
@@ -85,6 +118,47 @@ def test_filtrar_evolucion_supermercados_limita_series():
     assert len(filtrada) == 2
 
 
+def test_filtrar_precios_evolucion_respeta_supermercado_seleccionado():
+    precios = _precios_equivalentes()
+
+    filtrados = filtrar_precios_evolucion(precios, ["Stock"], "")
+
+    assert set(filtrados["supermercado"]) == {"Stock"}
+    assert len(filtrados) == 2
+
+
+def test_filtrar_precios_evolucion_busca_dentro_de_la_seleccion():
+    precios = normalizar_precios(
+        pd.DataFrame(
+            [
+                {
+                    "supermercado": "Stock",
+                    "nombre_producto": "Coca Cola 1000 ml retornable",
+                    "precio": 8500,
+                    "fecha_registro": "2026-05-07",
+                },
+                {
+                    "supermercado": "Casa Rica",
+                    "nombre_producto": "Coca Cola 1 L sin azucar",
+                    "precio": 9800,
+                    "fecha_registro": "2026-05-07",
+                },
+                {
+                    "supermercado": "Stock",
+                    "nombre_producto": "Pepsi 1000 ml",
+                    "precio": 7600,
+                    "fecha_registro": "2026-05-07",
+                },
+            ]
+        )
+    )
+
+    filtrados = filtrar_precios_evolucion(precios, ["Stock"], "coca 1l")
+
+    assert list(filtrados["nombre_producto"]) == ["Coca Cola 1000 ml retornable"]
+    assert set(filtrados["supermercado"]) == {"Stock"}
+
+
 def test_obtener_configuracion_evolucion_prepara_modo_comparar():
     evolucion = preparar_evolucion_producto(_precios_equivalentes(), "coca cola 2 L")
 
@@ -96,6 +170,20 @@ def test_obtener_configuracion_evolucion_prepara_modo_comparar():
 
     assert comparar is True
     assert set(filtrada["supermercado"]) == {"Stock", "Superseis"}
+
+
+def test_obtener_configuracion_evolucion_acepta_lista_en_modo_unico():
+    evolucion = preparar_evolucion_producto(_precios_equivalentes(), "coca cola 2 L")
+
+    filtrada, comparar = obtener_configuracion_evolucion(
+        evolucion,
+        "Ver un supermercado",
+        ["Superseis"],
+    )
+
+    assert comparar is False
+    assert set(filtrada["supermercado"]) == {"Superseis"}
+    assert len(filtrada) == 2
 
 
 def test_obtener_colores_supermercados_reconocibles():
