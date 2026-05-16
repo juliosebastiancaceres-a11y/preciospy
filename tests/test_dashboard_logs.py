@@ -234,6 +234,47 @@ Estado final: 0
     assert "Biggie tardó más de lo esperado" in titulos
 
 
+def test_parsear_log_scraper_no_marca_error_en_seccion_en_curso(tmp_path):
+    ruta_log = tmp_path / "scraper-2026-05-16_10-50-00.log"
+    ruta_log.write_text(
+        """
+PreciosPY scraper diario
+Fecha: 2026-05-16 10:50:00 -03
+
+== Los Jardines ==
+Inicio: 2026-05-16 10:51:40 -03
+Productos scrapeados: 6114
+Productos guardados en SQLite: 6095
+Productos sincronizados con Supabase: 6095
+Fin: 2026-05-16 11:01:49 -03
+Codigo de salida: 0
+
+== Casa Rica ==
+Inicio: 2026-05-16 11:01:49 -03
+Error temporal al scrapear Casa Rica Bebidas, pagina 4 (intento 1/3): conexion
+Casa Rica - Almacen: 1338 productos en 67 paginas
+""".strip(),
+        encoding="utf-8",
+    )
+
+    log = parsear_log_scraper(ruta_log)
+    tabla = preparar_tabla_monitoreo_corrida(log)
+    alertas = preparar_alertas_monitoreo_corrida(log)
+
+    assert log["estado"] == "En curso"
+    assert tabla.loc[0, "Paso"] == "Los Jardines"
+    assert tabla.loc[0, "Estado"] == "OK"
+    assert tabla.loc[1, "Paso"] == "Casa Rica"
+    assert tabla.loc[1, "Estado"] == "En curso"
+    assert alertas == [
+        {
+            "nivel": "info",
+            "titulo": "Casa Rica está en curso",
+            "detalle": "La corrida diaria todavía no terminó.",
+        }
+    ]
+
+
 def test_obtener_logs_scraper_respeta_limite(tmp_path, monkeypatch):
     for indice in range(3):
         ruta_log = tmp_path / f"scraper-2026-05-08_0{indice}-00-00.log"

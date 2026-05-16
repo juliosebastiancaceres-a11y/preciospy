@@ -1388,6 +1388,7 @@ def parsear_secciones_log_scraper(contenido):
         duracion_segundos = calcular_segundos_corrida(inicio, fin)
         codigo_texto = extraer_ultimo_valor_log(r"Codigo de salida:\s*(\d+)", bloque)
         codigo = int(codigo_texto) if codigo_texto else None
+        en_curso = bool(inicio) and not fin and codigo is None
         ok = codigo == 0
         lineas_error = [
             linea.strip()
@@ -1403,7 +1404,8 @@ def parsear_secciones_log_scraper(contenido):
                 "inicio": inicio,
                 "fin": fin,
                 "codigo": codigo,
-                "estado": "OK" if ok else "Error",
+                "estado": "En curso" if en_curso else ("OK" if ok else "Error"),
+                "en_curso": en_curso,
                 "duracion": formatear_duracion_segundos(duracion_segundos),
                 "duracion_segundos": duracion_segundos,
                 "scrapeados": sumar_valores_log(
@@ -1471,6 +1473,8 @@ def preparar_tabla_ultima_corrida(log):
 
 def obtener_estado_visual_corrida(seccion):
     """Devuelve un estado simple para leer rapido el monitoreo."""
+    if seccion.get("en_curso"):
+        return "En curso"
     if seccion["errores"] > 0 or seccion["estado"] != "OK":
         return "Error"
     if seccion["advertencias"] > 0:
@@ -1514,6 +1518,8 @@ def colorear_tabla_monitoreo_corrida(fila):
     estado = fila.get("Estado")
     if estado == "Error":
         fondo = "background-color: #FEE4E2; color: #7A271A;"
+    elif estado == "En curso":
+        fondo = "background-color: #DBEAFE; color: #1E3A8A;"
     elif estado == "OK con avisos":
         fondo = "background-color: #FEF0C7; color: #7A4E00;"
     else:
@@ -1540,6 +1546,16 @@ def preparar_alertas_monitoreo_corrida(log):
     for seccion in log.get("secciones", []):
         nombre = simplificar_nombre_paso_corrida(seccion["nombre"])
         es_sync_final = seccion["nombre"] == "Sincronizar faltantes SQLite -> Supabase"
+
+        if seccion.get("en_curso"):
+            alertas.append(
+                {
+                    "nivel": "info",
+                    "titulo": f"{nombre} está en curso",
+                    "detalle": "La corrida diaria todavía no terminó.",
+                }
+            )
+            continue
 
         if seccion["estado"] != "OK" or seccion["errores"] > 0:
             detalle = seccion["ultimo_error"] or "El paso terminó con error."
@@ -1603,6 +1619,8 @@ def mostrar_alertas_monitoreo_corrida(log):
             st.error(mensaje)
         elif alerta["nivel"] == "warning":
             st.warning(mensaje)
+        elif alerta["nivel"] == "info":
+            st.info(mensaje)
         else:
             st.success(mensaje)
 
@@ -1653,7 +1671,11 @@ def parsear_log_scraper(ruta_log, lineas_detalle=40):
         "fecha": fecha_match.group(1).strip() if fecha_match else "",
         "inicio": inicio_match.group(1).strip() if inicio_match else "",
         "fin": fin_matches[-1].strip() if fin_matches else "",
-        "estado": f"OK ({estado})" if estado == "0" else f"Error ({estado})",
+        "estado": (
+            f"OK ({estado})"
+            if estado == "0"
+            else ("En curso" if not estado_match else f"Error ({estado})")
+        ),
         "scrapeados": scrapeados,
         "sqlite": guardados_sqlite,
         "supabase": sincronizados,
