@@ -921,8 +921,10 @@ def obtener_colores_supermercados(supermercados):
         "biggie": "#C6051D",
         "los jardines": "#D6A300",
         "casa rica": "#101828",
+        "areté": "#E84B8A",
+        "arete": "#E84B8A",
     }
-    paleta_respaldo = ["#0038A8", "#12805C", "#7C3AED", "#C47A00"]
+    paleta_respaldo = ["#0038A8", "#12805C", "#7C3AED", "#C47A00", "#E84B8A"]
     dominio = []
     colores = []
 

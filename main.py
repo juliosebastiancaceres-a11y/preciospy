@@ -3,6 +3,7 @@ import sys
 
 from database import guardar_en_supabase, guardar_productos, inicializar_db
 from scraper import (
+    scrapear_arete,
     scrapear_biggie,
     scrapear_casa_rica,
     scrapear_los_jardines,
@@ -23,6 +24,7 @@ def parsear_argumentos():
             "losjardines",
             "casarica",
             "biggie",
+            "arete",
         ),
         default="todos",
         help="Supermercado a scrapear. Por defecto corre todos.",
@@ -84,6 +86,14 @@ def obtener_productos(supermercado, limite_categorias=None, limite_paginas=None)
     if supermercado in ("todos", "biggie"):
         productos.extend(
             scrapear_biggie(
+                limite_categorias=limite_categorias,
+                limite_paginas=limite_paginas or 250,
+            )
+        )
+
+    if supermercado in ("todos", "arete"):
+        productos.extend(
+            scrapear_arete(
                 limite_categorias=limite_categorias,
                 limite_paginas=limite_paginas or 250,
             )

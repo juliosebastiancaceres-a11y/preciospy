@@ -100,13 +100,14 @@ def test_obtener_configuracion_evolucion_prepara_modo_comparar():
 
 def test_obtener_colores_supermercados_reconocibles():
     dominio, colores = obtener_colores_supermercados(
-        ["Biggie", "Los Jardines", "Casa Rica", "Stock", "Superseis"]
+        ["Biggie", "Los Jardines", "Casa Rica", "Areté", "Stock", "Superseis"]
     )
 
     assert dict(zip(dominio, colores)) == {
         "Biggie": "#C6051D",
         "Los Jardines": "#D6A300",
         "Casa Rica": "#101828",
+        "Areté": "#E84B8A",
         "Stock": "#0038A8",
         "Superseis": "#2E7D32",
     }

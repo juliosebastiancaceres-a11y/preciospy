@@ -14,6 +14,7 @@ URL_STOCK = "https://www.stock.com.py/"
 URL_LOS_JARDINES = "https://www.losjardinesonline.com.py/"
 URL_CASA_RICA = "https://www.casarica.com.py/"
 URL_BIGGIE = "https://www.biggie.com.py/"
+URL_ARETE = "https://www.arete.com.py/"
 URL_API_BIGGIE = "https://api.app.biggie.com.py/api/"
 TAMANO_PAGINA_BIGGIE = 24
 REQUEST_TIMEOUT = 20
@@ -121,6 +122,55 @@ CATEGORIAS_CASA_RICA = [
         "https://www.casarica.com.py/catalogo/verduleria-fruteria-c280",
         "Verduleria y fruteria",
     ),
+]
+CATEGORIAS_ARETE = [
+    ("https://www.arete.com.py/catalogo/almacen-c273", "Almacen"),
+    ("https://www.arete.com.py/catalogo/bazar-c414", "Bazar"),
+    (
+        "https://www.arete.com.py/catalogo/bebidas-con-alcohol-c266",
+        "Bebidas con alcohol",
+    ),
+    (
+        "https://www.arete.com.py/catalogo/bebidas-sin-alcohol-c297",
+        "Bebidas sin alcohol",
+    ),
+    ("https://www.arete.com.py/catalogo/carnes-y-pescados-c261", "Carnes y pescados"),
+    (
+        "https://www.arete.com.py/catalogo/chocolate-y-golosinas-c398",
+        "Chocolate y golosinas",
+    ),
+    ("https://www.arete.com.py/catalogo/confiteria-c420", "Confiteria"),
+    ("https://www.arete.com.py/catalogo/congelados-c274", "Congelados"),
+    (
+        "https://www.arete.com.py/catalogo/cuidado-del-hogar-c309",
+        "Cuidado del hogar",
+    ),
+    (
+        "https://www.arete.com.py/catalogo/cuidado-personal-c322",
+        "Cuidado personal",
+    ),
+    ("https://www.arete.com.py/catalogo/desayuno-c287", "Desayuno"),
+    ("https://www.arete.com.py/catalogo/fiambres-c298", "Fiambres"),
+    (
+        "https://www.arete.com.py/catalogo/frutas-y-verduras-c367",
+        "Frutas y verduras",
+    ),
+    ("https://www.arete.com.py/catalogo/electrodomesticos-c407", "Electrodomesticos"),
+    ("https://www.arete.com.py/catalogo/lacteos-c364", "Lacteos"),
+    ("https://www.arete.com.py/catalogo/mascotas-c399", "Mascotas"),
+    ("https://www.arete.com.py/catalogo/panaderia-c395", "Panaderia"),
+    ("https://www.arete.com.py/catalogo/pastas-frescas-c385", "Pastas frescas"),
+    ("https://www.arete.com.py/catalogo/quesos-c366", "Quesos"),
+    ("https://www.arete.com.py/catalogo/rotiseria-c464", "Rotiseria"),
+    ("https://www.arete.com.py/catalogo/snacks-c475", "Snacks"),
+    ("https://www.arete.com.py/catalogo/tienda-c402", "Tienda"),
+    ("https://www.arete.com.py/catalogo/jugueteria-c519", "Jugueteria"),
+    (
+        "https://www.arete.com.py/catalogo/ferreteria-y-jardin-c520",
+        "Ferreteria y jardin",
+    ),
+    ("https://www.arete.com.py/catalogo/cotillon-c521", "Cotillon"),
+    ("https://www.arete.com.py/catalogo/libreria-c522", "Libreria"),
 ]
 
 
@@ -495,6 +545,14 @@ def extraer_url_producto(contenedor, base_url):
     return urljoin(base_url, enlace.get("href"))
 
 
+def extraer_url_producto_dattamax(contenedor, base_url):
+    enlace = contenedor.select_one("a.ecommercepro-LoopProduct-link[href]")
+    if enlace:
+        return urljoin(base_url, enlace.get("href"))
+
+    return extraer_url_producto(contenedor, base_url)
+
+
 def extraer_productos(html, categoria=None, url_categoria=URL_SUPERSEIS):
     """Extrae productos desde el HTML de una pagina de Superseis."""
     soup = BeautifulSoup(html, "html.parser")
@@ -558,6 +616,13 @@ def construir_url_pagina_los_jardines(url, pagina):
 def construir_url_pagina_casa_rica(url, pagina):
     """Construye la URL paginada que usa Casa Rica."""
     return construir_url_pagina_los_jardines(url, pagina)
+
+
+def construir_url_pagina_arete(url, pagina):
+    """Construye la URL paginada que usa Areté."""
+    url_pagina = construir_url_pagina_los_jardines(url, pagina)
+    separador = "&" if "?" in url_pagina else "?"
+    return f"{url_pagina}{separador}ajax=true"
 
 
 def leer_categorias_stock():
@@ -675,7 +740,7 @@ def _extraer_productos_dattamax(
                 nombre=nombre_html.get_text(" ", strip=True),
                 precio_texto=precio_texto,
                 categoria=categoria,
-                url_producto=extraer_url_producto(producto_html, base_url),
+                url_producto=extraer_url_producto_dattamax(producto_html, base_url),
                 unidad=obtener_unidad(producto_html),
             )
 
@@ -714,6 +779,30 @@ def extraer_productos_casa_rica(
         categoria=categoria,
         base_url=URL_CASA_RICA,
         obtener_unidad=lambda _producto_html: "unidad",
+    )
+
+
+def _extraer_unidad_arete(contenedor):
+    cantidad_html = contenedor.select_one("input.inp-quantity")
+    if not cantidad_html:
+        return "unidad"
+
+    unidad = normalizar_nombre_producto(cantidad_html.get("data-modo_venta"))
+    return unidad.lower() if unidad else "unidad"
+
+
+def extraer_productos_arete(
+    html,
+    categoria=None,
+    url_categoria=URL_ARETE,
+):
+    """Extrae productos desde el HTML de una pagina de Areté."""
+    return _extraer_productos_dattamax(
+        html,
+        supermercado="Areté",
+        categoria=categoria,
+        base_url=URL_ARETE,
+        obtener_unidad=_extraer_unidad_arete,
     )
 
 
@@ -1098,6 +1187,58 @@ def scrapear_casa_rica(limite_categorias=None, limite_paginas=250):
             todos_los_productos.extend(productos_categoria)
             print(
                 f"Casa Rica - {nombre_categoria}: {len(productos_categoria)} productos "
+                f"en {paginas_con_productos} paginas"
+            )
+
+    return todos_los_productos
+
+
+def scrapear_arete(limite_categorias=None, limite_paginas=250):
+    """Scrapea todos los productos de Areté recorriendo su paginacion."""
+    todos_los_productos = []
+    categorias = CATEGORIAS_ARETE
+
+    if limite_categorias is not None:
+        categorias = categorias[:limite_categorias]
+
+    with crear_sesion() as sesion:
+        for url, nombre_categoria in categorias:
+            productos_categoria = []
+            paginas_con_productos = 0
+
+            for pagina in range(1, limite_paginas + 1):
+                url_pagina = construir_url_pagina_arete(url, pagina)
+                html = descargar_html(
+                    sesion,
+                    url_pagina,
+                    f"Areté {nombre_categoria}, pagina {pagina}",
+                )
+
+                if not html:
+                    break
+
+                productos = extraer_productos_arete(
+                    html,
+                    categoria=nombre_categoria,
+                    url_categoria=url,
+                )
+
+                if not productos:
+                    break
+
+                productos_categoria.extend(productos)
+                paginas_con_productos += 1
+                imprimir_progreso_scraper(
+                    "Areté",
+                    nombre_categoria,
+                    pagina,
+                    len(productos_categoria),
+                )
+                time.sleep(PAUSA_ENTRE_PAGINAS)
+
+            todos_los_productos.extend(productos_categoria)
+            print(
+                f"Areté - {nombre_categoria}: {len(productos_categoria)} productos "
                 f"en {paginas_con_productos} paginas"
             )
 

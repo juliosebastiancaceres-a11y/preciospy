@@ -1,10 +1,12 @@
 from scraper import (
     crear_slug,
+    construir_url_pagina_arete,
     construir_url_pagina_casa_rica,
     construir_url_pagina_los_jardines,
     construir_producto,
     descargar_html,
     extraer_categorias_biggie,
+    extraer_productos_arete,
     extraer_productos_biggie,
     extraer_productos_casa_rica,
     extraer_productos_los_jardines,
@@ -241,6 +243,48 @@ def test_extraer_productos_casa_rica_desde_html():
         productos[0]["url_producto"]
         == "https://www.casarica.com.py/aceite-de-oliva-huasco-extra-virgen-500ml-p34561"
     )
+
+
+def test_extraer_productos_arete_desde_html():
+    html = """
+    <div class="product">
+        <a class="ecommercepro-LoopProduct-link"
+           href="aceituna-nucete-desc-premium-180-24-p127192">
+            <span class="price">
+                <ins><span class="amount"></span></ins>
+                <span class="amount">₲. 28.500</span>
+            </span>
+            <h2 class="ecommercepro-loop-product__title">
+                ACEITUNA NUCETE DESC/PREMIUM 180*24
+            </h2>
+        </a>
+        <input class="inp-quantity" data-modo_venta="Unidad" />
+    </div>
+    """
+
+    productos = extraer_productos_arete(
+        html,
+        categoria="Almacen",
+        url_categoria="https://www.arete.com.py/catalogo/almacen-c273",
+    )
+
+    assert len(productos) == 1
+    assert productos[0]["supermercado"] == "Areté"
+    assert productos[0]["nombre_producto"] == "ACEITUNA NUCETE DESC/PREMIUM 180*24"
+    assert productos[0]["precio"] == 28500
+    assert productos[0]["categoria"] == "Almacen"
+    assert productos[0]["unidad"] == "unidad"
+    assert (
+        productos[0]["url_producto"]
+        == "https://www.arete.com.py/aceituna-nucete-desc-premium-180-24-p127192"
+    )
+
+
+def test_construir_url_pagina_arete_usa_sufijo_de_catalogo():
+    url = "https://www.arete.com.py/catalogo/almacen-c273"
+
+    assert construir_url_pagina_arete(url, 1) == f"{url}?ajax=true"
+    assert construir_url_pagina_arete(url, 2) == f"{url}.2?ajax=true"
 
 
 def test_extraer_categorias_biggie_desde_json():
