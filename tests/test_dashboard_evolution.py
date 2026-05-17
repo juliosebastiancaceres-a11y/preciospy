@@ -216,7 +216,6 @@ def test_obtener_colores_supermercados_reconocibles():
             "Los Jardines",
             "Casa Rica",
             "Areté",
-            "Megashop",
             "Stock",
             "Superseis",
         ]
@@ -227,7 +226,6 @@ def test_obtener_colores_supermercados_reconocibles():
         "Los Jardines": "#D6A300",
         "Casa Rica": "#101828",
         "Areté": "#38BDF8",
-        "Megashop": "#F97316",
         "Stock": "#0038A8",
         "Superseis": "#2E7D32",
     }

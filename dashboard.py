@@ -784,6 +784,9 @@ def normalizar_precios(precios):
             precios[columna] = None
 
     precios = precios.dropna(subset=["nombre_producto", "supermercado"]).copy()
+    precios = precios[
+        precios["supermercado"].astype(str).str.strip().str.lower() != "megashop"
+    ].copy()
     precios["moneda"] = precios["moneda"].fillna("PYG").astype(str).str.upper()
     precios.loc[precios["moneda"].eq(""), "moneda"] = "PYG"
     precios["precio"] = pd.to_numeric(precios["precio"], errors="coerce")
@@ -897,17 +900,6 @@ def formatear_guaranies(precio):
     return f"₲ {int(round(precio)):,.0f}".replace(",", ".")
 
 
-def formatear_precio(precio, moneda="PYG"):
-    """Formatea precios respetando la moneda del registro."""
-    simbolos = {
-        "ARS": "$",
-        "PYG": "₲",
-    }
-    moneda = str(moneda or "PYG").upper()
-    simbolo = simbolos.get(moneda, moneda)
-    return f"{simbolo} {int(round(precio)):,.0f}".replace(",", ".")
-
-
 def reconciliar_supermercados_seleccionados(
     seleccion_guardada,
     supermercados,
@@ -950,7 +942,6 @@ def obtener_colores_supermercados(supermercados):
         "casa rica": "#101828",
         "areté": "#38BDF8",
         "arete": "#38BDF8",
-        "megashop": "#F97316",
     }
     paleta_respaldo = ["#0038A8", "#12805C", "#7C3AED", "#C47A00", "#38BDF8"]
     dominio = []
@@ -2021,13 +2012,28 @@ def mostrar_filtros(precios):
         placeholder="Ej. arroz, aceite, leche",
         key="filtro_busqueda",
     )
-    rango_precio = st.sidebar.slider(
-        "Rango de precios",
-        min_value=precio_minimo,
-        max_value=precio_maximo,
-        key="filtro_precio",
-        format="₲ %d",
-    )
+    precio_actual = st.session_state.get("filtro_precio")
+    if (
+        not isinstance(precio_actual, tuple)
+        or len(precio_actual) != 2
+        or precio_actual[0] < precio_minimo
+        or precio_actual[1] > precio_maximo
+        or precio_actual[0] > precio_actual[1]
+    ):
+        st.session_state["filtro_precio"] = (precio_minimo, precio_maximo)
+
+    if precio_minimo < precio_maximo:
+        rango_precio = st.sidebar.slider(
+            "Rango de precios",
+            min_value=precio_minimo,
+            max_value=precio_maximo,
+            key="filtro_precio",
+            format="₲ %d",
+        )
+    else:
+        rango_precio = (precio_minimo, precio_maximo)
+        st.session_state["filtro_precio"] = rango_precio
+        st.sidebar.caption(f"Rango de precios: {formatear_guaranies(precio_minimo)}")
 
     rango_fecha = None
     if rango_fechas:
@@ -2053,7 +2059,6 @@ def preparar_tabla(precios):
         "nombre_producto",
         "precio",
         "unidad",
-        "moneda",
         "fecha_registro",
     ]
     columnas_existentes = [
@@ -2065,10 +2070,7 @@ def preparar_tabla(precios):
         [columnas_existentes]
         .copy()
     )
-    tabla["precio"] = tabla.apply(
-        lambda fila: formatear_precio(fila["precio"], fila.get("moneda")),
-        axis=1,
-    )
+    tabla["precio"] = tabla["precio"].map(formatear_guaranies)
     tabla = tabla.fillna("")
     tabla = tabla.rename(
         columns={
@@ -2076,7 +2078,6 @@ def preparar_tabla(precios):
             "nombre_producto": "Producto",
             "precio": "Precio",
             "unidad": "Unidad",
-            "moneda": "Moneda",
             "fecha_registro": "Fecha",
         }
     )
@@ -2102,10 +2103,7 @@ def preparar_exportacion_historico(precios):
     if historico.empty:
         return historico
 
-    historico["precio_formateado"] = historico.apply(
-        lambda fila: formatear_precio(fila["precio"], fila.get("moneda")),
-        axis=1,
-    )
+    historico["precio_formateado"] = historico["precio"].map(formatear_guaranies)
     columnas_orden = [
         columna
         for columna in ["fecha_registro", "supermercado", "nombre_producto"]
@@ -2262,7 +2260,7 @@ def preparar_comparacion_supermercados(precios):
     filas = []
     supermercados = sorted(ultimos["supermercado"].dropna().unique())
 
-    for (clave_matching, moneda), grupo in ultimos.groupby(["clave_matching", "moneda"]):
+    for clave_matching, grupo in ultimos.groupby("clave_matching"):
         if grupo["supermercado"].nunique() < 2:
             continue
 
@@ -2279,7 +2277,7 @@ def preparar_comparacion_supermercados(precios):
             detalles_productos.append(
                 (
                     f"{producto['supermercado']}: {producto['nombre_producto']} "
-                    f"({formatear_precio(producto['precio'], producto.get('moneda'))})"
+                    f"({formatear_guaranies(producto['precio'])})"
                 )
             )
 
@@ -2291,7 +2289,6 @@ def preparar_comparacion_supermercados(precios):
             "Confianza": "Alta" if coincidencia == "Exacta" else "Media",
             "Supermercados comparados": grupo["supermercado"].nunique(),
             "Productos comparados": " | ".join(detalles_productos),
-            "Moneda": moneda,
             "Mejor precio": mejor["precio"],
             "Diferencia": diferencia,
             "Ahorro %": porcentaje,
@@ -2331,7 +2328,6 @@ def preparar_tabla_comparacion(comparacion):
         "Confianza",
         "Supermercados comparados",
         "Productos comparados",
-        "Moneda",
         "Ahorro %",
         "Fecha",
     }
@@ -2339,12 +2335,10 @@ def preparar_tabla_comparacion(comparacion):
         columna for columna in tabla.columns if columna not in columnas_excluidas
     ]
 
-    moneda_fila = tabla["Moneda"] if "Moneda" in tabla.columns else "PYG"
     for columna in columnas_precio:
-        tabla[columna] = [
-            "" if pd.isna(valor) else formatear_precio(valor, moneda)
-            for valor, moneda in zip(tabla[columna], moneda_fila)
-        ]
+        tabla[columna] = tabla[columna].map(
+            lambda valor: "" if pd.isna(valor) else formatear_guaranies(valor)
+        )
 
     tabla["Ahorro %"] = tabla["Ahorro %"].map(lambda valor: f"{valor:.1f}%")
 
@@ -2355,7 +2349,6 @@ def preparar_tabla_comparacion(comparacion):
         "Supermercados comparados",
         "Supermercado más barato",
         "Producto mejor precio",
-        "Moneda",
         "Mejor precio",
         "Diferencia",
         "Ahorro %",

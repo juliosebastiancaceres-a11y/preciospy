@@ -7,7 +7,6 @@ from scraper import (
     scrapear_biggie,
     scrapear_casa_rica,
     scrapear_los_jardines,
-    scrapear_megashop,
     scrapear_stock,
     scrapear_todas_las_categorias,
 )
@@ -26,7 +25,6 @@ def parsear_argumentos():
             "casarica",
             "biggie",
             "arete",
-            "megashop",
         ),
         default="todos",
         help="Supermercado a scrapear. Por defecto corre todos.",
@@ -96,14 +94,6 @@ def obtener_productos(supermercado, limite_categorias=None, limite_paginas=None)
     if supermercado in ("todos", "arete"):
         productos.extend(
             scrapear_arete(
-                limite_categorias=limite_categorias,
-                limite_paginas=limite_paginas or 250,
-            )
-        )
-
-    if supermercado in ("todos", "megashop"):
-        productos.extend(
-            scrapear_megashop(
                 limite_categorias=limite_categorias,
                 limite_paginas=limite_paginas or 250,
             )
