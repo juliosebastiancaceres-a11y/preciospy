@@ -1,6 +1,7 @@
 import pandas as pd
 
 from dashboard import normalizar_precios, preparar_comparacion_supermercados
+from dashboard import preparar_tabla_comparacion
 from dashboard import filtrar_por_busqueda_inteligente, preparar_terminos_busqueda
 
 
@@ -32,6 +33,10 @@ def test_preparar_comparacion_supermercados_detecta_equivalentes():
     assert fila["Producto comparable"] == "coca cola 2 L"
     assert fila["Supermercado más barato"] == "Superseis"
     assert fila["Coincidencia"] == "Exacta"
+    assert fila["Confianza"] == "Alta"
+    assert fila["Supermercados comparados"] == 2
+    assert "Stock: COCA COLA 2L" in fila["Productos comparados"]
+    assert "Superseis: Coca Cola 2000 ml" in fila["Productos comparados"]
     assert fila["Mejor precio"] == 11500
     assert fila["Diferencia"] == 500
 
@@ -62,6 +67,41 @@ def test_preparar_comparacion_supermercados_detecta_match_flexible():
     assert fila["Producto comparable"] == "coca cola original 2 L"
     assert fila["Supermercado más barato"] == "Superseis"
     assert fila["Coincidencia"] == "Flexible"
+    assert fila["Confianza"] == "Media"
+
+
+def test_preparar_tabla_comparacion_formatea_precios_y_prioriza_columnas():
+    precios = normalizar_precios(
+        pd.DataFrame(
+            [
+                {
+                    "supermercado": "Stock",
+                    "nombre_producto": "COCA COLA 2L",
+                    "precio": 12000,
+                    "fecha_registro": "2026-05-08",
+                },
+                {
+                    "supermercado": "Superseis",
+                    "nombre_producto": "Coca Cola 2000 ml",
+                    "precio": 11500,
+                    "fecha_registro": "2026-05-08",
+                },
+            ]
+        )
+    )
+    comparacion = preparar_comparacion_supermercados(precios)
+
+    tabla = preparar_tabla_comparacion(comparacion)
+
+    assert list(tabla.columns[:4]) == [
+        "Producto comparable",
+        "Coincidencia",
+        "Confianza",
+        "Supermercados comparados",
+    ]
+    assert tabla.iloc[0]["Mejor precio"] == "₲ 11.500"
+    assert tabla.iloc[0]["Diferencia"] == "₲ 500"
+    assert tabla.iloc[0]["Ahorro %"] == "4.2%"
 
 
 def test_preparar_comparacion_supermercados_no_mezcla_variantes_distintas():

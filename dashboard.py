@@ -2252,11 +2252,23 @@ def preparar_comparacion_supermercados(precios):
         coincidencia = (
             "Exacta" if grupo["nombre_normalizado"].nunique() == 1 else "Flexible"
         )
+        detalles_productos = []
+        for _, producto in grupo.sort_values("supermercado").iterrows():
+            detalles_productos.append(
+                (
+                    f"{producto['supermercado']}: {producto['nombre_producto']} "
+                    f"({formatear_guaranies(producto['precio'])})"
+                )
+            )
+
         fila = {
             "Producto comparable": mejor["etiqueta_matching"] or clave_matching,
             "Producto mejor precio": mejor["nombre_producto"],
             "Supermercado más barato": mejor["supermercado"],
             "Coincidencia": coincidencia,
+            "Confianza": "Alta" if coincidencia == "Exacta" else "Media",
+            "Supermercados comparados": grupo["supermercado"].nunique(),
+            "Productos comparados": " | ".join(detalles_productos),
             "Mejor precio": mejor["precio"],
             "Diferencia": diferencia,
             "Ahorro %": porcentaje,
@@ -2280,6 +2292,57 @@ def preparar_comparacion_supermercados(precios):
         ["Diferencia", "Mejor precio"],
         ascending=[False, True],
     )
+
+
+def preparar_tabla_comparacion(comparacion):
+    """Formatea la comparacion para que sea mas facil de leer."""
+    if comparacion.empty:
+        return comparacion.copy()
+
+    tabla = comparacion.copy()
+    columnas_excluidas = {
+        "Producto comparable",
+        "Producto mejor precio",
+        "Supermercado más barato",
+        "Coincidencia",
+        "Confianza",
+        "Supermercados comparados",
+        "Productos comparados",
+        "Ahorro %",
+        "Fecha",
+    }
+    columnas_precio = [
+        columna for columna in tabla.columns if columna not in columnas_excluidas
+    ]
+
+    for columna in columnas_precio:
+        tabla[columna] = tabla[columna].map(
+            lambda valor: "" if pd.isna(valor) else formatear_guaranies(valor)
+        )
+
+    tabla["Ahorro %"] = tabla["Ahorro %"].map(lambda valor: f"{valor:.1f}%")
+
+    columnas_prioritarias = [
+        "Producto comparable",
+        "Coincidencia",
+        "Confianza",
+        "Supermercados comparados",
+        "Supermercado más barato",
+        "Producto mejor precio",
+        "Mejor precio",
+        "Diferencia",
+        "Ahorro %",
+        "Productos comparados",
+        "Fecha",
+    ]
+    columnas_finales = [
+        columna for columna in columnas_prioritarias if columna in tabla.columns
+    ]
+    columnas_finales.extend(
+        columna for columna in tabla.columns if columna not in columnas_finales
+    )
+
+    return tabla[columnas_finales].fillna("")
 
 
 def preparar_alertas_precios(precios, umbral_porcentaje=5):
@@ -2513,7 +2576,7 @@ def mostrar_comparacion_supermercados(precios):
     """Muestra productos equivalentes encontrados entre supermercados."""
     mostrar_encabezado_seccion(
         "Comparación entre supermercados",
-        "Detectamos productos equivalentes por nombre normalizado y mostramos dónde conviene comprar.",
+        "Revisá equivalencias exactas y flexibles antes de decidir dónde conviene comprar.",
         "Matching",
     )
 
@@ -2525,33 +2588,41 @@ def mostrar_comparacion_supermercados(precios):
         )
         return
 
-    tabla = comparacion.head(50).copy()
-    columnas_precio = [
-        columna
-        for columna in tabla.columns
-        if columna
-        not in {
-            "Producto comparable",
-            "Producto mejor precio",
-            "Supermercado más barato",
-            "Coincidencia",
-            "Ahorro %",
-            "Fecha",
-        }
+    exactas = comparacion[comparacion["Coincidencia"] == "Exacta"]
+    flexibles = comparacion[comparacion["Coincidencia"] == "Flexible"]
+    ahorro_mayor = comparacion["Diferencia"].max()
+    columnas_metricas = st.columns(4)
+    columnas_metricas[0].metric("Coincidencias", len(comparacion))
+    columnas_metricas[1].metric("Exactas", len(exactas))
+    columnas_metricas[2].metric("Flexibles", len(flexibles))
+    columnas_metricas[3].metric("Mayor diferencia", formatear_guaranies(ahorro_mayor))
+
+    st.caption(
+        "Exacta usa nombres normalizados iguales. Flexible une nombres equivalentes "
+        "por producto, variante y presentación; revisá la columna de productos comparados."
+    )
+
+    pestanas = st.tabs(["Exactas", "Flexibles", "Todas"])
+    vistas = [exactas, flexibles, comparacion]
+    mensajes = [
+        "No hay coincidencias exactas con estos filtros.",
+        "No hay coincidencias flexibles con estos filtros.",
+        "No hay coincidencias con estos filtros.",
     ]
 
-    for columna in columnas_precio:
-        tabla[columna] = tabla[columna].map(
-            lambda valor: "" if pd.isna(valor) else formatear_guaranies(valor)
-        )
+    for pestana, vista, mensaje in zip(pestanas, vistas, mensajes):
+        with pestana:
+            if vista.empty:
+                st.info(mensaje)
+                continue
 
-    tabla["Ahorro %"] = tabla["Ahorro %"].map(lambda valor: f"{valor:.1f}%")
-    st.dataframe(
-        tabla,
-        hide_index=True,
-        width="stretch",
-        height=360,
-    )
+            tabla = preparar_tabla_comparacion(vista.head(50))
+            st.dataframe(
+                tabla,
+                hide_index=True,
+                width="stretch",
+                height=420,
+            )
 
 
 def mostrar_exportaciones(precios):
@@ -2702,6 +2773,18 @@ def preparar_opciones_evolucion(precios, minimo_fechas=1):
     return opciones
 
 
+def obtener_indice_opcion_evolucion(opciones, clave_preferida=None):
+    """Elige una opcion valida para que la evolucion arranque con grafico."""
+    if opciones.empty:
+        return 0
+
+    claves = list(opciones["clave_matching"])
+    if clave_preferida in claves:
+        return claves.index(clave_preferida)
+
+    return 0
+
+
 def preparar_evolucion_producto(precios, clave_matching):
     """Agrupa la evolucion de un producto equivalente por fecha y supermercado."""
     if precios.empty or not clave_matching:
@@ -2753,6 +2836,12 @@ def filtrar_precios_evolucion(precios, supermercados, texto_busqueda=""):
 
     filtrados = precios[precios["supermercado"].isin(supermercados)].copy()
     return filtrar_por_busqueda_inteligente(filtrados, texto_busqueda)
+
+
+def limpiar_busqueda_evolucion():
+    """Restablece la busqueda interna de evolucion."""
+    st.session_state["busqueda_evolucion_producto_v2"] = ""
+    st.session_state.pop("clave_evolucion_producto_v2", None)
 
 
 def preparar_resumen_evolucion(agrupado):
@@ -2882,19 +2971,30 @@ def mostrar_evolucion_precios(precios):
         st.info(
             "No hay productos con historial suficiente para esa búsqueda y supermercado."
         )
+        if texto_busqueda_evolucion:
+            st.button(
+                "Ver opción disponible",
+                on_click=limpiar_busqueda_evolucion,
+                use_container_width=True,
+            )
         return
 
     etiquetas = dict(zip(opciones["label"], opciones["clave_matching"]))
+    clave_guardada = st.session_state.get("clave_evolucion_producto_v2")
+    indice_opcion = obtener_indice_opcion_evolucion(opciones, clave_guardada)
     with st.container(border=True):
         etiqueta_seleccionada = st.selectbox(
             "Producto para analizar",
             list(etiquetas.keys()),
+            index=indice_opcion,
+            key="etiqueta_evolucion_producto_v2",
             help=(
                 "La evolución usa matching de productos, por eso puede unir nombres "
                 "equivalentes solo dentro de los supermercados seleccionados."
             ),
         )
     clave_seleccionada = etiquetas[etiqueta_seleccionada]
+    st.session_state["clave_evolucion_producto_v2"] = clave_seleccionada
     agrupado = preparar_evolucion_producto(precios, clave_seleccionada)
 
     if agrupado.empty or agrupado["fecha"].nunique() < 2:

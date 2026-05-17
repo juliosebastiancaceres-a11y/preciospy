@@ -6,6 +6,7 @@ from dashboard import (
     normalizar_precios,
     obtener_configuracion_evolucion,
     obtener_colores_supermercados,
+    obtener_indice_opcion_evolucion,
     preparar_evolucion_producto,
     preparar_opciones_evolucion,
     preparar_resumen_evolucion,
@@ -86,6 +87,28 @@ def test_preparar_opciones_evolucion_filtra_por_minimo_fechas():
 
     assert len(opciones) == 1
     assert opciones.iloc[0]["clave_matching"] == "pepsi 1 L"
+
+
+def test_obtener_indice_opcion_evolucion_conserva_clave_valida():
+    opciones = pd.DataFrame(
+        [
+            {"clave_matching": "aceite 1 L"},
+            {"clave_matching": "coca cola 2 L"},
+        ]
+    )
+
+    assert obtener_indice_opcion_evolucion(opciones, "coca cola 2 L") == 1
+
+
+def test_obtener_indice_opcion_evolucion_usa_primera_si_clave_no_existe():
+    opciones = pd.DataFrame(
+        [
+            {"clave_matching": "aceite 1 L"},
+            {"clave_matching": "coca cola 2 L"},
+        ]
+    )
+
+    assert obtener_indice_opcion_evolucion(opciones, "leche 1 L") == 0
 
 
 def test_preparar_evolucion_producto_compara_nombres_equivalentes():
