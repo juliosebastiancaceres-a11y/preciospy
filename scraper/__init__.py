@@ -16,6 +16,7 @@ URL_LOS_JARDINES = "https://www.losjardinesonline.com.py/"
 URL_CASA_RICA = "https://www.casarica.com.py/"
 URL_BIGGIE = "https://www.biggie.com.py/"
 URL_ARETE = "https://www.arete.com.py/"
+URL_MEGASHOP = "https://www.megashopok.com.ar/"
 URL_API_BIGGIE = "https://api.app.biggie.com.py/api/"
 TAMANO_PAGINA_BIGGIE = 24
 
@@ -250,6 +251,27 @@ def limpiar_precio(precio_texto):
 def limpiar_precio_stock(precio_texto):
     """Alias de compatibilidad para precios de Stock."""
     return limpiar_precio(precio_texto)
+
+
+def limpiar_precio_megashop(precio_texto):
+    """Convierte precios argentinos de Megashop a entero."""
+    if not precio_texto:
+        return None
+
+    precio_limpio = str(precio_texto).strip()
+    precio_limpio = re.sub(r"(?i)\bars\.?\b|ars|\$", "", precio_limpio)
+    precio_limpio = precio_limpio.split(",", 1)[0]
+    precio_limpio = (
+        precio_limpio.replace(".", "")
+        .replace("\xa0", "")
+        .replace(" ", "")
+        .strip()
+    )
+
+    if not precio_limpio.isdigit():
+        return None
+
+    return int(precio_limpio)
 
 
 def normalizar_nombre_producto(nombre):
@@ -538,10 +560,12 @@ def construir_producto(
     categoria=None,
     url_producto=None,
     unidad="unidad",
+    moneda="PYG",
+    limpiar_precio_func=limpiar_precio,
 ):
     """Construye un producto valido o retorna None si faltan datos criticos."""
     nombre_producto = normalizar_nombre_producto(nombre)
-    precio = limpiar_precio(precio_texto)
+    precio = limpiar_precio_func(precio_texto)
 
     if not nombre_producto or precio is None:
         return None
@@ -555,7 +579,7 @@ def construir_producto(
         "fecha_registro": fecha_registro_actual(),
         "categoria": categoria,
         "url_producto": url_producto,
-        "moneda": "PYG",
+        "moneda": moneda,
         "fecha_hora_registro": fecha_hora_registro_actual(),
     }
 
@@ -645,6 +669,22 @@ def construir_url_pagina_arete(url, pagina):
     url_pagina = construir_url_pagina_los_jardines(url, pagina)
     separador = "&" if "?" in url_pagina else "?"
     return f"{url_pagina}{separador}ajax=true"
+
+
+def construir_url_pagina_megashop(url, pagina):
+    """Construye la URL paginada que usa Megashop."""
+    if pagina <= 1:
+        return url
+
+    coincidencia_categoria = re.search(r"-(\d+)(?:[/?#]|$)", url)
+    categoria_id = coincidencia_categoria.group(1) if coincidencia_categoria else ""
+    separador = "&" if "?" in url else "?"
+    parametros = f"page={pagina}&order=name&order_type=asc&withFilters=0"
+
+    if categoria_id:
+        parametros = f"page={pagina}&category={categoria_id}&order=name&order_type=asc&withFilters=0"
+
+    return f"{url}{separador}{parametros}"
 
 
 def leer_categorias_stock():
@@ -826,6 +866,75 @@ def extraer_productos_arete(
         base_url=URL_ARETE,
         obtener_unidad=_extraer_unidad_arete,
     )
+
+
+def extraer_categorias_megashop(html):
+    """Extrae categorias principales desde el menu de Megashop."""
+    soup = BeautifulSoup(html, "html.parser")
+    categorias = []
+    vistos = set()
+
+    for enlace in soup.select(".menu_productos a.subProduct"):
+        nombre = normalizar_nombre_producto(enlace.get_text(" ", strip=True))
+        url = urljoin(URL_MEGASHOP, enlace.get("href") or "")
+
+        if not nombre or "/ecommerce/" not in url or url in vistos:
+            continue
+
+        vistos.add(url)
+        categorias.append((url, nombre))
+
+    return categorias
+
+
+def extraer_productos_megashop(
+    html,
+    categoria=None,
+    url_categoria=URL_MEGASHOP,
+):
+    """Extrae productos desde una pagina de categoria de Megashop."""
+    soup = BeautifulSoup(html, "html.parser")
+    productos = []
+
+    for nombre_html in soup.select("div.name[id^='description_']"):
+        try:
+            contenedor = nombre_html
+            precio_html = None
+
+            while contenedor and not precio_html:
+                precio_html = contenedor.select_one(".price_number")
+                contenedor = contenedor.find_parent()
+
+            if not precio_html:
+                continue
+
+            enlace = nombre_html.select_one("a[href]")
+            nombre = enlace.get_text(" ", strip=True) if enlace else nombre_html.get_text(
+                " ",
+                strip=True,
+            )
+            url_producto = (
+                urljoin(URL_MEGASHOP, enlace.get("href"))
+                if enlace
+                else url_categoria
+            )
+            producto = construir_producto(
+                supermercado="Megashop",
+                nombre=nombre,
+                precio_texto=precio_html.get_text(" ", strip=True),
+                categoria=categoria,
+                url_producto=url_producto,
+                unidad="unidad",
+                moneda="ARS",
+                limpiar_precio_func=limpiar_precio_megashop,
+            )
+
+            if producto:
+                productos.append(producto)
+        except Exception as error:
+            print(f"Producto de Megashop omitido por error de lectura: {error}")
+
+    return productos
 
 
 def extraer_categorias_biggie(datos):
@@ -1261,6 +1370,81 @@ def scrapear_arete(limite_categorias=None, limite_paginas=250):
             todos_los_productos.extend(productos_categoria)
             print(
                 f"Areté - {nombre_categoria}: {len(productos_categoria)} productos "
+                f"en {paginas_con_productos} paginas"
+            )
+
+    return todos_los_productos
+
+
+def leer_categorias_megashop(sesion):
+    """Lee categorias principales de Megashop desde la home."""
+    html = descargar_html(sesion, URL_MEGASHOP, "Megashop categorias")
+
+    if not html:
+        return []
+
+    return extraer_categorias_megashop(html)
+
+
+def scrapear_megashop(limite_categorias=None, limite_paginas=250):
+    """Scrapea productos de Megashop recorriendo sus categorias paginadas."""
+    todos_los_productos = []
+
+    with crear_sesion() as sesion:
+        categorias = leer_categorias_megashop(sesion)
+
+        if limite_categorias is not None:
+            categorias = categorias[:limite_categorias]
+
+        for url, nombre_categoria in categorias:
+            productos_categoria = []
+            paginas_con_productos = 0
+            vistos_categoria = set()
+
+            for pagina in range(1, limite_paginas + 1):
+                url_pagina = construir_url_pagina_megashop(url, pagina)
+                html = descargar_html(
+                    sesion,
+                    url_pagina,
+                    f"Megashop {nombre_categoria}, pagina {pagina}",
+                )
+
+                if not html:
+                    break
+
+                productos = extraer_productos_megashop(
+                    html,
+                    categoria=nombre_categoria,
+                    url_categoria=url,
+                )
+
+                productos_nuevos = []
+                for producto in productos:
+                    clave = producto.get("url_producto") or producto.get(
+                        "nombre_producto"
+                    )
+                    if clave in vistos_categoria:
+                        continue
+
+                    vistos_categoria.add(clave)
+                    productos_nuevos.append(producto)
+
+                if not productos_nuevos:
+                    break
+
+                productos_categoria.extend(productos_nuevos)
+                paginas_con_productos += 1
+                imprimir_progreso_scraper(
+                    "Megashop",
+                    nombre_categoria,
+                    pagina,
+                    len(productos_categoria),
+                )
+                time.sleep(PAUSA_ENTRE_PAGINAS)
+
+            todos_los_productos.extend(productos_categoria)
+            print(
+                f"Megashop - {nombre_categoria}: {len(productos_categoria)} productos "
                 f"en {paginas_con_productos} paginas"
             )
 

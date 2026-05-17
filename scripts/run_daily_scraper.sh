@@ -26,6 +26,8 @@ BIGGIE_LIMITE_CATEGORIAS="${BIGGIE_LIMITE_CATEGORIAS:-21}"
 BIGGIE_LIMITE_PAGINAS="${BIGGIE_LIMITE_PAGINAS:-250}"
 ARETE_LIMITE_CATEGORIAS="${ARETE_LIMITE_CATEGORIAS:-26}"
 ARETE_LIMITE_PAGINAS="${ARETE_LIMITE_PAGINAS:-250}"
+MEGASHOP_LIMITE_CATEGORIAS="${MEGASHOP_LIMITE_CATEGORIAS:-16}"
+MEGASHOP_LIMITE_PAGINAS="${MEGASHOP_LIMITE_PAGINAS:-250}"
 
 mkdir -p "$LOG_DIR"
 cd "$PROJECT_DIR" || exit 1
@@ -106,6 +108,13 @@ run_scraper() {
             --supermercado arete \
             --limite-categorias "$ARETE_LIMITE_CATEGORIAS" \
             --limite-paginas "$ARETE_LIMITE_PAGINAS"
+
+    run_scraper \
+        "Megashop" \
+        "$PYTHON_BIN" -u main.py \
+            --supermercado megashop \
+            --limite-categorias "$MEGASHOP_LIMITE_CATEGORIAS" \
+            --limite-paginas "$MEGASHOP_LIMITE_PAGINAS"
 
     run_scraper \
         "Sincronizar faltantes SQLite -> Supabase" \

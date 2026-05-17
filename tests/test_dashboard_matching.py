@@ -128,6 +128,33 @@ def test_preparar_comparacion_supermercados_no_mezcla_variantes_distintas():
     assert comparacion.empty
 
 
+def test_preparar_comparacion_supermercados_no_mezcla_monedas():
+    precios = normalizar_precios(
+        pd.DataFrame(
+            [
+                {
+                    "supermercado": "Stock",
+                    "nombre_producto": "Botella Termica 1L",
+                    "precio": 50000,
+                    "fecha_registro": "2026-05-17",
+                    "moneda": "PYG",
+                },
+                {
+                    "supermercado": "Megashop",
+                    "nombre_producto": "Botella Termica 1L",
+                    "precio": 15000,
+                    "fecha_registro": "2026-05-17",
+                    "moneda": "ARS",
+                },
+            ]
+        )
+    )
+
+    comparacion = preparar_comparacion_supermercados(precios)
+
+    assert comparacion.empty
+
+
 def test_preparar_comparacion_supermercados_ignora_un_solo_supermercado():
     precios = pd.DataFrame(
         [

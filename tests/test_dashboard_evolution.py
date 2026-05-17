@@ -211,7 +211,15 @@ def test_obtener_configuracion_evolucion_acepta_lista_en_modo_unico():
 
 def test_obtener_colores_supermercados_reconocibles():
     dominio, colores = obtener_colores_supermercados(
-        ["Biggie", "Los Jardines", "Casa Rica", "Areté", "Stock", "Superseis"]
+        [
+            "Biggie",
+            "Los Jardines",
+            "Casa Rica",
+            "Areté",
+            "Megashop",
+            "Stock",
+            "Superseis",
+        ]
     )
 
     assert dict(zip(dominio, colores)) == {
@@ -219,6 +227,7 @@ def test_obtener_colores_supermercados_reconocibles():
         "Los Jardines": "#D6A300",
         "Casa Rica": "#101828",
         "Areté": "#38BDF8",
+        "Megashop": "#F97316",
         "Stock": "#0038A8",
         "Superseis": "#2E7D32",
     }

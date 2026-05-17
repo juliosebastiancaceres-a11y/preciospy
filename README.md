@@ -117,6 +117,7 @@ python main.py --supermercado losjardines
 python main.py --supermercado casarica
 python main.py --supermercado biggie
 python main.py --supermercado arete
+python main.py --supermercado megashop
 ```
 
 Prueba corta sin enviar datos a Supabase:
@@ -135,6 +136,8 @@ El scraper de Biggie usa su API publica de categorias y articulos, paginando con
 `take` y `skip` hasta cubrir el total reportado por cada categoria.
 El scraper de Areté usa la paginacion del catalogo con el formato `categoria.2`,
 `categoria.3`, etc., igual que Los Jardines y Casa Rica.
+El scraper de Megashop lee las categorias principales desde la home y pagina con
+`page` y `category` hasta que una pagina ya no trae productos.
 
 La corrida diaria usa pausas mas cortas que la ejecucion manual para terminar en
 menos tiempo sin cambiar la cobertura. Se puede ajustar con variables de entorno:

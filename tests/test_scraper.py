@@ -3,17 +3,21 @@ from scraper import (
     construir_url_pagina_arete,
     construir_url_pagina_casa_rica,
     construir_url_pagina_los_jardines,
+    construir_url_pagina_megashop,
     construir_producto,
     descargar_html,
     extraer_categorias_biggie,
+    extraer_categorias_megashop,
     extraer_productos_arete,
     extraer_productos_biggie,
     extraer_productos_casa_rica,
     extraer_productos_los_jardines,
+    extraer_productos_megashop,
     imprimir_progreso_scraper,
     leer_entero_entorno,
     leer_float_entorno,
     limpiar_precio,
+    limpiar_precio_megashop,
     normalizar_nombre_comparable,
     normalizar_nombre_producto,
     obtener_clave_matching_producto,
@@ -33,6 +37,12 @@ def test_limpiar_precio_valores_invalidos():
     assert limpiar_precio("Precio no disponible") is None
     assert limpiar_precio("") is None
     assert limpiar_precio(None) is None
+
+
+def test_limpiar_precio_megashop_valores_validos():
+    assert limpiar_precio_megashop("$41.500,00") == 41500
+    assert limpiar_precio_megashop("ARS 9.999,99") == 9999
+    assert limpiar_precio_megashop("15000") == 15000
 
 
 def test_normalizar_nombre_producto():
@@ -287,6 +297,64 @@ def test_construir_url_pagina_arete_usa_sufijo_de_catalogo():
 
     assert construir_url_pagina_arete(url, 1) == f"{url}?ajax=true"
     assert construir_url_pagina_arete(url, 2) == f"{url}.2?ajax=true"
+
+
+def test_construir_url_pagina_megashop_usa_categoria_y_page():
+    url = "https://www.megashopok.com.ar/ecommerce/bazar-8"
+
+    assert construir_url_pagina_megashop(url, 1) == url
+    assert (
+        construir_url_pagina_megashop(url, 3)
+        == "https://www.megashopok.com.ar/ecommerce/bazar-8?page=3&category=8&order=name&order_type=asc&withFilters=0"
+    )
+
+
+def test_extraer_categorias_megashop_desde_html():
+    html = """
+    <div class="menu_productos">
+        <a href="/ecommerce/bazar-8" class="subProduct">BAZAR</a>
+        <a href="/ecommerce/bazar-8" class="subProduct">BAZAR</a>
+        <a href="/ecommerce/hogar-12" class="subProduct">HOGAR</a>
+    </div>
+    """
+
+    assert extraer_categorias_megashop(html) == [
+        ("https://www.megashopok.com.ar/ecommerce/bazar-8", "BAZAR"),
+        ("https://www.megashopok.com.ar/ecommerce/hogar-12", "HOGAR"),
+    ]
+
+
+def test_extraer_productos_megashop_desde_html():
+    html = """
+    <div class="card_product">
+        <div id="description_1065" class="name">
+            <a href="/ecommerce/bazar-8/anafe-simple-1065">ANAFE SIMPLE</a>
+        </div>
+        <div class="price_wrap">
+            <div class="price">
+                <div class="price_number">$41.500,00</div>
+            </div>
+        </div>
+    </div>
+    """
+
+    productos = extraer_productos_megashop(
+        html,
+        categoria="BAZAR",
+        url_categoria="https://www.megashopok.com.ar/ecommerce/bazar-8",
+    )
+
+    assert len(productos) == 1
+    assert productos[0]["supermercado"] == "Megashop"
+    assert productos[0]["nombre_producto"] == "ANAFE SIMPLE"
+    assert productos[0]["precio"] == 41500
+    assert productos[0]["categoria"] == "BAZAR"
+    assert productos[0]["unidad"] == "unidad"
+    assert productos[0]["moneda"] == "ARS"
+    assert (
+        productos[0]["url_producto"]
+        == "https://www.megashopok.com.ar/ecommerce/bazar-8/anafe-simple-1065"
+    )
 
 
 def test_extraer_categorias_biggie_desde_json():
