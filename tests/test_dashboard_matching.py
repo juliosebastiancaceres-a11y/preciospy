@@ -49,12 +49,14 @@ def test_preparar_comparacion_supermercados_detecta_match_flexible():
                 "nombre_producto": "Gaseosa Coca Cola Original Botella 2 Litros",
                 "precio": 13000,
                 "fecha_registro": "2026-05-08",
+                "categoria": "Bebidas sin alcohol",
             },
             {
                 "supermercado": "Superseis",
                 "nombre_producto": "Coca-Cola sabor original gaseosa 2000ml",
                 "precio": 12500,
                 "fecha_registro": "2026-05-08",
+                "categoria": "Bebidas sin alcohol",
             },
         ]
     )
@@ -95,10 +97,11 @@ def test_preparar_tabla_comparacion_formatea_precios_y_prioriza_columnas():
 
     assert list(tabla.columns[:4]) == [
         "Producto comparable",
+        "Categoría comparable",
         "Coincidencia",
         "Confianza",
-        "Supermercados comparados",
     ]
+    assert tabla.iloc[0]["Categoría comparable"] == "Sin categoria"
     assert tabla.iloc[0]["Mejor precio"] == "₲ 11.500"
     assert tabla.iloc[0]["Diferencia"] == "₲ 500"
     assert tabla.iloc[0]["Ahorro %"] == "4.2%"
@@ -116,6 +119,86 @@ def test_preparar_comparacion_supermercados_no_mezcla_variantes_distintas():
             {
                 "supermercado": "Superseis",
                 "nombre_producto": "Coca Cola Zero 2L",
+                "precio": 11500,
+                "fecha_registro": "2026-05-08",
+            },
+        ]
+    )
+
+    precios = normalizar_precios(precios)
+    comparacion = preparar_comparacion_supermercados(precios)
+
+    assert comparacion.empty
+
+
+def test_preparar_comparacion_supermercados_no_mezcla_categorias_flexibles():
+    precios = pd.DataFrame(
+        [
+            {
+                "supermercado": "Stock",
+                "nombre_producto": "Coca Cola Original Botella 2 Litros",
+                "precio": 12000,
+                "fecha_registro": "2026-05-08",
+                "categoria": "Bebidas sin alcohol",
+            },
+            {
+                "supermercado": "Superseis",
+                "nombre_producto": "Coca-Cola sabor original gaseosa 2000ml",
+                "precio": 11500,
+                "fecha_registro": "2026-05-08",
+                "categoria": "Limpieza",
+            },
+        ]
+    )
+
+    precios = normalizar_precios(precios)
+    comparacion = preparar_comparacion_supermercados(precios)
+
+    assert comparacion.empty
+
+
+def test_preparar_comparacion_supermercados_usa_categorias_flexibles():
+    precios = pd.DataFrame(
+        [
+            {
+                "supermercado": "Stock",
+                "nombre_producto": "Coca Cola Original Botella 2 Litros",
+                "precio": 12000,
+                "fecha_registro": "2026-05-08",
+                "categoria": "Bebidas sin alcohol",
+            },
+            {
+                "supermercado": "Superseis",
+                "nombre_producto": "Coca-Cola sabor original gaseosa 2000ml",
+                "precio": 11500,
+                "fecha_registro": "2026-05-08",
+                "categoria": "Bebidas sin alcohol",
+            },
+        ]
+    )
+
+    precios = normalizar_precios(precios)
+    comparacion = preparar_comparacion_supermercados(precios)
+
+    assert len(comparacion) == 1
+    fila = comparacion.iloc[0]
+    assert fila["Coincidencia"] == "Flexible"
+    assert fila["Categoría comparable"] == "Bebidas"
+    assert "Stock: Bebidas sin alcohol" in fila["Categorías comparadas"]
+
+
+def test_preparar_comparacion_supermercados_ignora_flexibles_sin_categoria():
+    precios = pd.DataFrame(
+        [
+            {
+                "supermercado": "Stock",
+                "nombre_producto": "Coca Cola Original Botella 2 Litros",
+                "precio": 12000,
+                "fecha_registro": "2026-05-08",
+            },
+            {
+                "supermercado": "Superseis",
+                "nombre_producto": "Coca-Cola sabor original gaseosa 2000ml",
                 "precio": 11500,
                 "fecha_registro": "2026-05-08",
             },

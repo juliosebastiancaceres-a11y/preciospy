@@ -808,6 +808,9 @@ def normalizar_precios(precios):
     precios["nombre_normalizado"] = precios["nombre_producto"].map(nombres_normalizados)
     precios["clave_matching"] = precios["nombre_producto"].map(claves_matching)
     precios["etiqueta_matching"] = precios["nombre_producto"].map(etiquetas_matching)
+    precios["categoria_matching"] = precios["categoria"].map(
+        normalizar_categoria_comparable
+    )
     return precios.dropna(subset=["precio"])
 
 
@@ -898,6 +901,42 @@ def cargar_precios():
 def formatear_guaranies(precio):
     """Formatea precios con separador de miles paraguayo."""
     return f"₲ {int(round(precio)):,.0f}".replace(",", ".")
+
+
+def normalizar_categoria_comparable(categoria):
+    """Agrupa categorias de supermercados distintos en rubros comparables."""
+    if pd.isna(categoria):
+        return ""
+
+    texto = normalizar_nombre_comparable(categoria).lower()
+
+    if not texto:
+        return ""
+
+    grupos = [
+        ("Bebidas", ["bebida", "gaseosa", "jugo", "agua", "cerveza", "vino"]),
+        ("Lacteos", ["lacteo", "leche", "ques", "yogur"]),
+        ("Carnes", ["carne", "carniceria", "pescado", "asado"]),
+        ("Frutas y verduras", ["fruta", "verdura", "verduleria", "fruteria"]),
+        ("Panaderia y confiteria", ["panaderia", "confiteria", "reposteria"]),
+        ("Fiambres", ["fiambr", "fiambre"]),
+        ("Congelados", ["congelado", "helado"]),
+        ("Limpieza", ["limpieza", "cuidado del hogar"]),
+        ("Cuidado personal", ["cuidado personal", "higiene", "perfumeria"]),
+        ("Mascotas", ["mascota", "veterinaria"]),
+        ("Bebes", ["bebe"]),
+        ("Bazar", ["bazar", "hogar", "ferreteria", "jardin", "electrodomestico"]),
+        ("Libreria", ["libreria", "cotillon", "jugueteria"]),
+        ("Snacks y golosinas", ["snack", "golosina", "chocolate"]),
+        ("Almacen", ["almacen", "desayuno", "conservado", "condimento", "salsa"]),
+        ("Rotiseria y pastas", ["rotiseria", "pasta"]),
+    ]
+
+    for grupo, palabras in grupos:
+        if any(palabra in texto for palabra in palabras):
+            return grupo
+
+    return texto.title()
 
 
 def reconciliar_supermercados_seleccionados(
@@ -2209,12 +2248,14 @@ def obtener_ultimos_precios(precios):
 
 
 def obtener_ultimos_precios_comparables(precios):
-    """Retorna el ultimo precio por nombre normalizado y supermercado."""
+    """Retorna el ultimo precio comparable por producto, supermercado y rubro."""
     if precios.empty:
         return precios.copy()
 
     comparables = precios.copy()
 
+    if "categoria" not in comparables.columns:
+        comparables["categoria"] = ""
     if "nombre_normalizado" not in comparables.columns:
         comparables["nombre_normalizado"] = comparables["nombre_producto"].apply(
             normalizar_nombre_comparable
@@ -2226,6 +2267,10 @@ def obtener_ultimos_precios_comparables(precios):
     if "etiqueta_matching" not in comparables.columns:
         comparables["etiqueta_matching"] = comparables["nombre_producto"].apply(
             obtener_etiqueta_matching_producto
+        )
+    if "categoria_matching" not in comparables.columns:
+        comparables["categoria_matching"] = comparables["categoria"].apply(
+            normalizar_categoria_comparable
         )
 
     comparables = comparables[
@@ -2245,9 +2290,64 @@ def obtener_ultimos_precios_comparables(precios):
         na_position="last",
     )
     return comparables.drop_duplicates(
-        subset=["clave_matching", "supermercado"],
+        subset=["clave_matching", "supermercado", "categoria_matching"],
         keep="first",
     )
+
+
+def preparar_fila_comparacion(grupo, clave_matching, supermercados, coincidencia):
+    """Construye una fila de comparacion para un grupo ya validado."""
+    grupo = grupo.sort_values("precio", ascending=True)
+    mejor = grupo.iloc[0]
+    mayor = grupo.iloc[-1]
+    diferencia = mayor["precio"] - mejor["precio"]
+    porcentaje = (diferencia / mayor["precio"]) * 100 if mayor["precio"] else 0
+    categorias = [
+        categoria
+        for categoria in grupo["categoria_matching"].fillna("").astype(str).unique()
+        if categoria
+    ]
+    categoria_comparable = categorias[0] if len(categorias) == 1 else "Varias"
+    if not categorias:
+        categoria_comparable = "Sin categoria"
+
+    detalles_productos = []
+    detalles_categorias = []
+    for _, producto in grupo.sort_values("supermercado").iterrows():
+        detalles_productos.append(
+            (
+                f"{producto['supermercado']}: {producto['nombre_producto']} "
+                f"({formatear_guaranies(producto['precio'])})"
+            )
+        )
+        categoria_original = producto.get("categoria") or "Sin categoria"
+        detalles_categorias.append(f"{producto['supermercado']}: {categoria_original}")
+
+    fila = {
+        "Producto comparable": mejor["etiqueta_matching"] or clave_matching,
+        "Categoría comparable": categoria_comparable,
+        "Producto mejor precio": mejor["nombre_producto"],
+        "Supermercado más barato": mejor["supermercado"],
+        "Coincidencia": coincidencia,
+        "Confianza": "Alta" if coincidencia == "Exacta" else "Media",
+        "Supermercados comparados": grupo["supermercado"].nunique(),
+        "Productos comparados": " | ".join(detalles_productos),
+        "Categorías comparadas": " | ".join(detalles_categorias),
+        "Mejor precio": mejor["precio"],
+        "Diferencia": diferencia,
+        "Ahorro %": porcentaje,
+        "Fecha": max(grupo["fecha_registro"].astype(str)),
+    }
+
+    for supermercado in supermercados:
+        precios_supermercado = grupo[grupo["supermercado"] == supermercado]
+        fila[supermercado] = (
+            precios_supermercado.iloc[0]["precio"]
+            if not precios_supermercado.empty
+            else None
+        )
+
+    return fila
 
 
 def preparar_comparacion_supermercados(precios):
@@ -2264,46 +2364,37 @@ def preparar_comparacion_supermercados(precios):
         if grupo["supermercado"].nunique() < 2:
             continue
 
-        grupo = grupo.sort_values("precio", ascending=True)
-        mejor = grupo.iloc[0]
-        mayor = grupo.iloc[-1]
-        diferencia = mayor["precio"] - mejor["precio"]
-        porcentaje = (diferencia / mayor["precio"]) * 100 if mayor["precio"] else 0
         coincidencia = (
             "Exacta" if grupo["nombre_normalizado"].nunique() == 1 else "Flexible"
         )
-        detalles_productos = []
-        for _, producto in grupo.sort_values("supermercado").iterrows():
-            detalles_productos.append(
-                (
-                    f"{producto['supermercado']}: {producto['nombre_producto']} "
-                    f"({formatear_guaranies(producto['precio'])})"
+
+        if coincidencia == "Exacta":
+            filas.append(
+                preparar_fila_comparacion(
+                    grupo,
+                    clave_matching,
+                    supermercados,
+                    coincidencia,
                 )
             )
+            continue
 
-        fila = {
-            "Producto comparable": mejor["etiqueta_matching"] or clave_matching,
-            "Producto mejor precio": mejor["nombre_producto"],
-            "Supermercado más barato": mejor["supermercado"],
-            "Coincidencia": coincidencia,
-            "Confianza": "Alta" if coincidencia == "Exacta" else "Media",
-            "Supermercados comparados": grupo["supermercado"].nunique(),
-            "Productos comparados": " | ".join(detalles_productos),
-            "Mejor precio": mejor["precio"],
-            "Diferencia": diferencia,
-            "Ahorro %": porcentaje,
-            "Fecha": max(grupo["fecha_registro"].astype(str)),
-        }
+        grupos_categoria = grupo[
+            grupo["categoria_matching"].fillna("").astype(str).str.len() > 0
+        ].groupby("categoria_matching")
 
-        for supermercado in supermercados:
-            precios_supermercado = grupo[grupo["supermercado"] == supermercado]
-            fila[supermercado] = (
-                precios_supermercado.iloc[0]["precio"]
-                if not precios_supermercado.empty
-                else None
+        for _, grupo_categoria in grupos_categoria:
+            if grupo_categoria["supermercado"].nunique() < 2:
+                continue
+
+            filas.append(
+                preparar_fila_comparacion(
+                    grupo_categoria,
+                    clave_matching,
+                    supermercados,
+                    coincidencia,
+                )
             )
-
-        filas.append(fila)
 
     if not filas:
         return pd.DataFrame()
@@ -2322,12 +2413,14 @@ def preparar_tabla_comparacion(comparacion):
     tabla = comparacion.copy()
     columnas_excluidas = {
         "Producto comparable",
+        "Categoría comparable",
         "Producto mejor precio",
         "Supermercado más barato",
         "Coincidencia",
         "Confianza",
         "Supermercados comparados",
         "Productos comparados",
+        "Categorías comparadas",
         "Ahorro %",
         "Fecha",
     }
@@ -2344,6 +2437,7 @@ def preparar_tabla_comparacion(comparacion):
 
     columnas_prioritarias = [
         "Producto comparable",
+        "Categoría comparable",
         "Coincidencia",
         "Confianza",
         "Supermercados comparados",
@@ -2353,6 +2447,7 @@ def preparar_tabla_comparacion(comparacion):
         "Diferencia",
         "Ahorro %",
         "Productos comparados",
+        "Categorías comparadas",
         "Fecha",
     ]
     columnas_finales = [
@@ -2619,7 +2714,8 @@ def mostrar_comparacion_supermercados(precios):
 
     st.caption(
         "Exacta usa nombres normalizados iguales. Flexible une nombres equivalentes "
-        "por producto, variante y presentación; revisá la columna de productos comparados."
+        "por producto, variante, presentación y categoría comparable; revisá las "
+        "columnas de productos y categorías comparadas."
     )
 
     pestanas = st.tabs(["Exactas", "Flexibles", "Todas"])
