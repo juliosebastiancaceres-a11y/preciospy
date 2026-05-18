@@ -3,6 +3,8 @@ import pandas as pd
 from dashboard import normalizar_precios, preparar_comparacion_supermercados
 from dashboard import preparar_tabla_comparacion
 from dashboard import filtrar_por_busqueda_inteligente, preparar_terminos_busqueda
+from dashboard import filtrar_comparacion_supermercados
+from dashboard import preparar_resumen_categorias_comparacion
 
 
 def test_preparar_comparacion_supermercados_detecta_equivalentes():
@@ -265,3 +267,81 @@ def test_filtrar_por_busqueda_inteligente_encuentra_texto_vago():
     assert list(filtrados["nombre_producto"]) == [
         "Gaseosa Coca Cola Original 1 Litro"
     ]
+
+
+def test_filtrar_comparacion_supermercados_combina_filtros():
+    comparacion = pd.DataFrame(
+        [
+            {
+                "Producto comparable": "coca cola original 2 L",
+                "Categoría comparable": "Bebidas",
+                "Producto mejor precio": "Coca Cola 2L",
+                "Supermercado más barato": "Stock",
+                "Coincidencia": "Flexible",
+                "Productos comparados": "Stock: Coca Cola 2L",
+                "Categorías comparadas": "Stock: Bebidas sin alcohol",
+                "Mejor precio": 11000,
+                "Diferencia": 1000,
+                "Ahorro %": 8.3,
+            },
+            {
+                "Producto comparable": "detergente 500 ml",
+                "Categoría comparable": "Limpieza",
+                "Producto mejor precio": "Detergente",
+                "Supermercado más barato": "Superseis",
+                "Coincidencia": "Exacta",
+                "Productos comparados": "Superseis: Detergente",
+                "Categorías comparadas": "Superseis: Limpieza",
+                "Mejor precio": 8000,
+                "Diferencia": 300,
+                "Ahorro %": 3.6,
+            },
+        ]
+    )
+
+    filtrada = filtrar_comparacion_supermercados(
+        comparacion,
+        categorias=["Bebidas"],
+        coincidencias=["Flexible"],
+        texto_busqueda="coca 2l",
+        diferencia_minima=500,
+    )
+
+    assert list(filtrada["Producto comparable"]) == ["coca cola original 2 L"]
+
+
+def test_preparar_resumen_categorias_comparacion_formatea_metricas():
+    comparacion = pd.DataFrame(
+        [
+            {
+                "Producto comparable": "coca cola 2 L",
+                "Categoría comparable": "Bebidas",
+                "Coincidencia": "Exacta",
+                "Diferencia": 1000,
+                "Ahorro %": 8.3,
+            },
+            {
+                "Producto comparable": "sprite 2 L",
+                "Categoría comparable": "Bebidas",
+                "Coincidencia": "Flexible",
+                "Diferencia": 500,
+                "Ahorro %": 4.2,
+            },
+            {
+                "Producto comparable": "detergente 500 ml",
+                "Categoría comparable": "Limpieza",
+                "Coincidencia": "Exacta",
+                "Diferencia": 300,
+                "Ahorro %": 3.6,
+            },
+        ]
+    )
+
+    resumen = preparar_resumen_categorias_comparacion(comparacion)
+
+    bebidas = resumen[resumen["Categoría comparable"] == "Bebidas"].iloc[0]
+    assert bebidas["Coincidencias"] == 2
+    assert bebidas["Exactas"] == 1
+    assert bebidas["Flexibles"] == 1
+    assert bebidas["Mayor diferencia"] == "₲ 1.000"
+    assert bebidas["Ahorro promedio"] == "6.2%"

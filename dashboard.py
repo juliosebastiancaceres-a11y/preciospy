@@ -39,6 +39,7 @@ st.set_page_config(
     page_title="PreciosPY",
     page_icon="🛒",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 
@@ -115,10 +116,10 @@ def aplicar_estilos():
             header[data-testid="stHeader"],
             [data-testid="stHeader"] {
                 background: transparent !important;
-                display: none !important;
-                height: 0 !important;
-                min-height: 0 !important;
-                visibility: hidden !important;
+                display: block !important;
+                height: 2.65rem !important;
+                min-height: 2.65rem !important;
+                visibility: visible !important;
             }
 
             [data-testid="stToolbar"],
@@ -129,10 +130,61 @@ def aplicar_estilos():
                 visibility: hidden !important;
             }
 
+            [data-testid="collapsedControl"],
+            [data-testid="stSidebarCollapseButton"] {
+                align-items: center !important;
+                background: rgba(255, 255, 255, 0.94) !important;
+                border: 1px solid var(--py-border) !important;
+                border-radius: 10px !important;
+                box-shadow: var(--py-shadow) !important;
+                color: var(--py-text) !important;
+                display: flex !important;
+                height: 2.25rem !important;
+                justify-content: center !important;
+                margin: 0.35rem !important;
+                opacity: 1 !important;
+                visibility: visible !important;
+                width: 2.25rem !important;
+                z-index: 999999 !important;
+            }
+
+            [data-testid="collapsedControl"] *,
+            [data-testid="stSidebarCollapseButton"] * {
+                color: var(--py-text) !important;
+                fill: var(--py-text) !important;
+                opacity: 1 !important;
+                visibility: visible !important;
+            }
+
             [data-testid="stSidebar"] {
                 background:
                     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 249, 253, 0.96));
                 border-right: 1px solid var(--py-border);
+                display: block !important;
+                min-width: 21rem !important;
+                opacity: 1 !important;
+                transform: translateX(0) !important;
+                visibility: visible !important;
+                width: 21rem !important;
+                z-index: 99999 !important;
+            }
+
+            [data-testid="stSidebar"][aria-expanded="false"],
+            section[data-testid="stSidebar"][aria-expanded="false"] {
+                display: block !important;
+                margin-left: 0 !important;
+                min-width: 21rem !important;
+                opacity: 1 !important;
+                transform: translateX(0) !important;
+                visibility: visible !important;
+                width: 21rem !important;
+            }
+
+            [data-testid="stSidebar"][aria-expanded="false"] > div,
+            section[data-testid="stSidebar"][aria-expanded="false"] > div {
+                opacity: 1 !important;
+                transform: none !important;
+                visibility: visible !important;
             }
 
             [data-testid="stSidebar"] h3 {
@@ -2460,6 +2512,104 @@ def preparar_tabla_comparacion(comparacion):
     return tabla[columnas_finales].fillna("")
 
 
+def filtrar_comparacion_supermercados(
+    comparacion,
+    categorias=None,
+    coincidencias=None,
+    texto_busqueda="",
+    diferencia_minima=0,
+):
+    """Filtra comparaciones sin depender de los filtros generales del dashboard."""
+    if comparacion.empty:
+        return comparacion.copy()
+
+    filtrada = comparacion.copy()
+
+    if categorias:
+        filtrada = filtrada[filtrada["Categoría comparable"].isin(categorias)]
+
+    if coincidencias:
+        filtrada = filtrada[filtrada["Coincidencia"].isin(coincidencias)]
+
+    if diferencia_minima:
+        filtrada = filtrada[filtrada["Diferencia"] >= diferencia_minima]
+
+    texto_busqueda = str(texto_busqueda or "").strip()
+    if texto_busqueda:
+        columnas_busqueda = [
+            "Producto comparable",
+            "Producto mejor precio",
+            "Supermercado más barato",
+            "Productos comparados",
+            "Categorías comparadas",
+        ]
+        columnas_busqueda = [
+            columna for columna in columnas_busqueda if columna in filtrada.columns
+        ]
+        terminos = preparar_terminos_busqueda(texto_busqueda)
+        filtro = pd.Series(True, index=filtrada.index)
+        for termino in terminos:
+            filtro_termino = pd.Series(False, index=filtrada.index)
+            for columna in columnas_busqueda:
+                filtro_termino = filtro_termino | filtrada[columna].astype(
+                    str
+                ).str.contains(
+                    termino,
+                    case=False,
+                    na=False,
+                    regex=False,
+                )
+            filtro = filtro & filtro_termino
+
+        if not terminos or not filtro.any():
+            filtro = pd.Series(False, index=filtrada.index)
+            for columna in columnas_busqueda:
+                filtro = filtro | filtrada[columna].astype(str).str.contains(
+                    texto_busqueda,
+                    case=False,
+                    na=False,
+                    regex=False,
+                )
+
+        filtrada = filtrada[filtro]
+
+    return filtrada
+
+
+def preparar_resumen_categorias_comparacion(comparacion):
+    """Resume la calidad y ahorro potencial por categoria comparable."""
+    if comparacion.empty:
+        return pd.DataFrame()
+
+    resumen = (
+        comparacion.groupby("Categoría comparable", dropna=False)
+        .agg(
+            Coincidencias=("Producto comparable", "count"),
+            Exactas=("Coincidencia", lambda serie: (serie == "Exacta").sum()),
+            Flexibles=("Coincidencia", lambda serie: (serie == "Flexible").sum()),
+            Mayor_diferencia=("Diferencia", "max"),
+            Ahorro_promedio=("Ahorro %", "mean"),
+        )
+        .reset_index()
+        .sort_values(["Coincidencias", "Mayor_diferencia"], ascending=[False, False])
+    )
+    resumen["Mayor diferencia"] = resumen["Mayor_diferencia"].map(formatear_guaranies)
+    resumen["Ahorro promedio"] = resumen["Ahorro_promedio"].map(
+        lambda valor: f"{valor:.1f}%"
+    )
+
+    return resumen[
+        [
+            "Categoría comparable",
+            "Coincidencias",
+            "Exactas",
+            "Flexibles",
+            "Mayor diferencia",
+            "Ahorro promedio",
+        ]
+    ]
+
+
 def preparar_alertas_precios(precios, umbral_porcentaje=5):
     """Detecta cambios relevantes contra el precio anterior disponible."""
     if precios.empty:
@@ -2718,8 +2868,112 @@ def mostrar_comparacion_supermercados(precios):
         "columnas de productos y categorías comparadas."
     )
 
+    categorias = sorted(
+        categoria
+        for categoria in comparacion["Categoría comparable"].dropna().unique()
+        if str(categoria).strip()
+    )
+    diferencia_maxima = int(comparacion["Diferencia"].max())
+
+    with st.container(border=True):
+        st.markdown("#### Revisar comparaciones")
+        columna_busqueda, columna_categoria = st.columns([1.2, 1])
+        texto_comparacion = columna_busqueda.text_input(
+            "Buscar dentro de comparaciones",
+            placeholder="Ej. coca 2l, leche, arroz",
+            key="comparacion_busqueda",
+        )
+        categorias_seleccionadas = columna_categoria.multiselect(
+            "Categorías comparables",
+            options=categorias,
+            default=categorias,
+            key="comparacion_categorias",
+        )
+
+        columna_tipo, columna_diferencia, columna_orden = st.columns([1, 1, 1])
+        coincidencias_seleccionadas = columna_tipo.multiselect(
+            "Tipo de coincidencia",
+            options=["Exacta", "Flexible"],
+            default=["Exacta", "Flexible"],
+            key="comparacion_tipos",
+        )
+        if diferencia_maxima > 0:
+            diferencia_minima = columna_diferencia.slider(
+                "Diferencia mínima",
+                min_value=0,
+                max_value=diferencia_maxima,
+                value=0,
+                step=max(int(diferencia_maxima / 100), 100),
+                format="₲ %d",
+                key="comparacion_diferencia_minima",
+            )
+        else:
+            diferencia_minima = 0
+            columna_diferencia.metric("Diferencia mínima", formatear_guaranies(0))
+
+        orden = columna_orden.selectbox(
+            "Ordenar por",
+            options=[
+                "Mayor diferencia",
+                "Menor precio",
+                "Producto",
+            ],
+            key="comparacion_orden",
+        )
+
+    comparacion_filtrada = filtrar_comparacion_supermercados(
+        comparacion,
+        categorias=categorias_seleccionadas,
+        coincidencias=coincidencias_seleccionadas,
+        texto_busqueda=texto_comparacion,
+        diferencia_minima=diferencia_minima,
+    )
+
+    if orden == "Menor precio":
+        comparacion_filtrada = comparacion_filtrada.sort_values(
+            ["Mejor precio", "Diferencia"],
+            ascending=[True, False],
+        )
+    elif orden == "Producto":
+        comparacion_filtrada = comparacion_filtrada.sort_values(
+            ["Producto comparable", "Diferencia"],
+            ascending=[True, False],
+        )
+    else:
+        comparacion_filtrada = comparacion_filtrada.sort_values(
+            ["Diferencia", "Mejor precio"],
+            ascending=[False, True],
+        )
+
+    if comparacion_filtrada.empty:
+        st.info("No hay comparaciones con esos filtros.")
+        return
+
+    exactas_filtradas = comparacion_filtrada[
+        comparacion_filtrada["Coincidencia"] == "Exacta"
+    ]
+    flexibles_filtradas = comparacion_filtrada[
+        comparacion_filtrada["Coincidencia"] == "Flexible"
+    ]
+    columnas_resultado = st.columns(4)
+    columnas_resultado[0].metric("Mostradas", len(comparacion_filtrada))
+    columnas_resultado[1].metric("Exactas", len(exactas_filtradas))
+    columnas_resultado[2].metric("Flexibles", len(flexibles_filtradas))
+    columnas_resultado[3].metric(
+        "Mayor diferencia filtrada",
+        formatear_guaranies(comparacion_filtrada["Diferencia"].max()),
+    )
+
+    with st.expander("Resumen por categoría"):
+        st.dataframe(
+            preparar_resumen_categorias_comparacion(comparacion_filtrada),
+            hide_index=True,
+            width="stretch",
+            height=300,
+        )
+
     pestanas = st.tabs(["Exactas", "Flexibles", "Todas"])
-    vistas = [exactas, flexibles, comparacion]
+    vistas = [exactas_filtradas, flexibles_filtradas, comparacion_filtrada]
     mensajes = [
         "No hay coincidencias exactas con estos filtros.",
         "No hay coincidencias flexibles con estos filtros.",
@@ -2739,6 +2993,17 @@ def mostrar_comparacion_supermercados(precios):
                 width="stretch",
                 height=420,
             )
+
+            primera = vista.iloc[0]
+            with st.expander("Detalle de la primera comparación mostrada"):
+                st.markdown(f"**Producto:** {primera['Producto comparable']}")
+                st.markdown(f"**Categoría:** {primera['Categoría comparable']}")
+                st.markdown(
+                    f"**Mejor precio:** {primera['Supermercado más barato']} - "
+                    f"{formatear_guaranies(primera['Mejor precio'])}"
+                )
+                st.markdown(f"**Productos:** {primera['Productos comparados']}")
+                st.markdown(f"**Categorías:** {primera['Categorías comparadas']}")
 
 
 def mostrar_exportaciones(precios):
