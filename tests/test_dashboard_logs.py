@@ -69,6 +69,9 @@ Estado final: 0
         "Scrapeados",
         "Sincronizados",
         "Reparados",
+        "Páginas Supabase",
+        "Pendientes finales",
+        "Verificado",
         "Duración",
         "Avisos",
         "Pendientes",
@@ -154,6 +157,10 @@ Claves existentes en Supabase: 208018
 Registros faltantes detectados: 127095
 Productos sincronizados con Supabase: 127095
 Historicos enviados a Supabase: 127095
+Validacion final: revisando Supabase despues del sync.
+Paginas Supabase leidas: 338
+Pendientes finales: 0
+Supabase verificado: sin faltantes.
 Fin: 2026-05-22 09:00:45 -03
 Codigo de salida: 0
 
@@ -169,6 +176,9 @@ Estado final: 0
     assert tabla.loc[0, "Paso"] == "Sync final"
     assert tabla.loc[0, "Estado"] == "OK con reparación"
     assert tabla.loc[0, "Reparados"] == 127095
+    assert tabla.loc[0, "Páginas Supabase"] == 338
+    assert tabla.loc[0, "Pendientes finales"] == 0
+    assert tabla.loc[0, "Verificado"] == "Sí"
     assert tabla.loc[0, "Pendientes"] == 127095
     assert alertas == [
         {
@@ -221,6 +231,9 @@ Estado final: 0
     assert sync_final["sqlite_revisados"] == 81997
     assert sync_final["supabase_existentes"] == 86586
     assert sync_final["faltantes"] == 0
+    assert sync_final["paginas_supabase"] == 0
+    assert sync_final["pendientes_finales"] == 0
+    assert sync_final["verificado"] is False
 
     tabla_monitoreo = preparar_tabla_monitoreo_corrida(log)
 
@@ -228,6 +241,9 @@ Estado final: 0
     assert tabla_monitoreo.loc[0, "Duración"] == "21 min 0 s"
     assert tabla_monitoreo.loc[1, "Paso"] == "Sync final"
     assert tabla_monitoreo.loc[1, "Sincronizados"] == 81997
+    assert tabla_monitoreo.loc[1, "Páginas Supabase"] == 0
+    assert tabla_monitoreo.loc[1, "Pendientes finales"] == 0
+    assert tabla_monitoreo.loc[1, "Verificado"] == "No"
     assert tabla_monitoreo.loc[1, "Duración"] == "1 min 0 s"
 
     alertas = preparar_alertas_monitoreo_corrida(log)

@@ -1526,9 +1526,16 @@ def parsear_secciones_log_scraper(contenido):
                     r"Productos duplicados omitidos antes de Supabase:\s*(\d+)",
                     bloque,
                 ),
+                "paginas_supabase": sumar_valores_log(
+                    r"Paginas Supabase leidas:\s*(\d+)", bloque
+                ),
                 "faltantes": sumar_valores_log(
                     r"Registros faltantes detectados:\s*(\d+)", bloque
                 ),
+                "pendientes_finales": sumar_valores_log(
+                    r"Pendientes finales:\s*(\d+)", bloque
+                ),
+                "verificado": "Supabase verificado: sin faltantes." in bloque,
                 "errores": len(errores),
                 "advertencias": len(advertencias),
                 "ultimo_error": errores[-1][:180] if errores else "",
@@ -1555,6 +1562,9 @@ def preparar_tabla_ultima_corrida(log):
                 "Históricos": seccion["historicos"],
                 "Duplicados": seccion["duplicados"],
                 "Faltantes": seccion["faltantes"],
+                "Páginas Supabase": seccion["paginas_supabase"],
+                "Pendientes finales": seccion["pendientes_finales"],
+                "Verificado": "Sí" if seccion["verificado"] else "No",
                 "Avisos": seccion["advertencias"],
                 "Errores": seccion["errores"],
                 "Código": "" if seccion["codigo"] is None else seccion["codigo"],
@@ -1606,6 +1616,9 @@ def preparar_tabla_monitoreo_corrida(log):
                 "Scrapeados": seccion["scrapeados"],
                 "Sincronizados": sincronizados,
                 "Reparados": seccion["historicos"],
+                "Páginas Supabase": seccion["paginas_supabase"],
+                "Pendientes finales": seccion["pendientes_finales"],
+                "Verificado": "Sí" if seccion["verificado"] else "No",
                 "Duración": seccion["duracion"],
                 "Avisos": seccion["advertencias"],
                 "Pendientes": seccion["faltantes"],
