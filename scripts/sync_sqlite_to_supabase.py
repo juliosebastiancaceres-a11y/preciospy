@@ -76,6 +76,7 @@ def cargar_claves_supabase(supabase):
         respuesta = (
             supabase.table("precios")
             .select(",".join(CLAVE_UNICA))
+            .order("id")
             .range(inicio, fin)
             .execute()
         )

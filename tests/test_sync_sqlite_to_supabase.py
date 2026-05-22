@@ -1,5 +1,6 @@
 from database import deduplicar_productos_por_clave
 from scripts.sync_sqlite_to_supabase import (
+    cargar_claves_supabase,
     clave_producto,
     detectar_faltantes,
     sincronizar_faltantes,
@@ -59,6 +60,79 @@ def test_detectar_faltantes_respeta_limite():
     faltantes = detectar_faltantes(productos, set(), limite=1)
 
     assert faltantes == [productos[0]]
+
+
+def test_cargar_claves_supabase_pagina_con_orden_estable(monkeypatch):
+    class Respuesta:
+        def __init__(self, data):
+            self.data = data
+
+    class Query:
+        def __init__(self, lotes, llamadas):
+            self.lotes = lotes
+            self.llamadas = llamadas
+            self.rango = None
+
+        def select(self, columnas):
+            self.llamadas.append(("select", columnas))
+            return self
+
+        def order(self, columna):
+            self.llamadas.append(("order", columna))
+            return self
+
+        def range(self, inicio, fin):
+            self.rango = (inicio, fin)
+            self.llamadas.append(("range", inicio, fin))
+            return self
+
+        def execute(self):
+            indice = self.rango[0] // 2
+            return Respuesta(self.lotes[indice])
+
+    class SupabaseFake:
+        def __init__(self):
+            self.llamadas = []
+            self.lotes = [
+                [
+                    {
+                        "supermercado": "Stock",
+                        "nombre_producto": "Arroz",
+                        "fecha_registro": "2026-05-22",
+                    },
+                    {
+                        "supermercado": "Superseis",
+                        "nombre_producto": "Aceite",
+                        "fecha_registro": "2026-05-22",
+                    },
+                ],
+                [
+                    {
+                        "supermercado": "Biggie",
+                        "nombre_producto": "Leche",
+                        "fecha_registro": "2026-05-22",
+                    }
+                ],
+            ]
+
+        def table(self, nombre):
+            self.llamadas.append(("table", nombre))
+            return Query(self.lotes, self.llamadas)
+
+    monkeypatch.setattr("scripts.sync_sqlite_to_supabase.TAMANO_LOTE_LECTURA", 2)
+    supabase = SupabaseFake()
+
+    claves = cargar_claves_supabase(supabase)
+
+    assert claves == {
+        ("Stock", "Arroz", "2026-05-22"),
+        ("Superseis", "Aceite", "2026-05-22"),
+        ("Biggie", "Leche", "2026-05-22"),
+    }
+    assert ("order", "id") in supabase.llamadas
+    assert supabase.llamadas.index(("order", "id")) < supabase.llamadas.index(
+        ("range", 0, 1)
+    )
 
 
 def test_deduplicar_productos_por_clave_conserva_ultimo_registro():
