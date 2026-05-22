@@ -1573,6 +1573,11 @@ def obtener_estado_visual_corrida(seccion):
         return "En curso"
     if seccion["errores"] > 0 or seccion["estado"] != "OK":
         return "Error"
+    if (
+        seccion["nombre"] == "Sincronizar faltantes SQLite -> Supabase"
+        and seccion["historicos"] > 0
+    ):
+        return "OK con reparación"
     if seccion["advertencias"] > 0:
         return "OK con avisos"
     return "OK"
@@ -1600,6 +1605,7 @@ def preparar_tabla_monitoreo_corrida(log):
                 "Estado": obtener_estado_visual_corrida(seccion),
                 "Scrapeados": seccion["scrapeados"],
                 "Sincronizados": sincronizados,
+                "Reparados": seccion["historicos"],
                 "Duración": seccion["duracion"],
                 "Avisos": seccion["advertencias"],
                 "Pendientes": seccion["faltantes"],
@@ -1616,7 +1622,7 @@ def colorear_tabla_monitoreo_corrida(fila):
         fondo = "background-color: #FEE4E2; color: #7A271A;"
     elif estado == "En curso":
         fondo = "background-color: #DBEAFE; color: #1E3A8A;"
-    elif estado == "OK con avisos":
+    elif estado in {"OK con avisos", "OK con reparación"}:
         fondo = "background-color: #FEF0C7; color: #7A4E00;"
     else:
         fondo = "background-color: #D1FADF; color: #054F31;"
@@ -1679,6 +1685,18 @@ def preparar_alertas_monitoreo_corrida(log):
                     "nivel": "warning",
                     "titulo": f"{nombre} terminó con avisos",
                     "detalle": f"{seccion['advertencias']} aviso(s) recuperados durante la corrida.",
+                }
+            )
+
+        if es_sync_final and seccion["historicos"] > 0:
+            alertas.append(
+                {
+                    "nivel": "warning",
+                    "titulo": "Sync final reparó Supabase",
+                    "detalle": (
+                        f"Se enviaron {seccion['historicos']} histórico(s) "
+                        "faltante(s) después del scrapeo."
+                    ),
                 }
             )
 

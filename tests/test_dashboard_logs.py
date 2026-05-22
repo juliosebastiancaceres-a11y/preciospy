@@ -68,6 +68,7 @@ Estado final: 0
         "Estado",
         "Scrapeados",
         "Sincronizados",
+        "Reparados",
         "Duración",
         "Avisos",
         "Pendientes",
@@ -137,6 +138,45 @@ Estado final: 0
     assert log["advertencias"] == 1
     assert log["ultimo_error"] == "Sin errores críticos (1 aviso(s) recuperados)"
     assert log["ok"] is True
+
+
+def test_parsear_log_scraper_marca_sync_final_con_reparacion(tmp_path):
+    ruta_log = tmp_path / "scraper-2026-05-22_08-12-37.log"
+    ruta_log.write_text(
+        """
+PreciosPY scraper diario
+Fecha: 2026-05-22 08:12:37 -03
+
+== Sincronizar faltantes SQLite -> Supabase ==
+Inicio: 2026-05-22 08:47:49 -03
+Registros validos en SQLite: 332780
+Claves existentes en Supabase: 208018
+Registros faltantes detectados: 127095
+Productos sincronizados con Supabase: 127095
+Historicos enviados a Supabase: 127095
+Fin: 2026-05-22 09:00:45 -03
+Codigo de salida: 0
+
+Estado final: 0
+""".strip(),
+        encoding="utf-8",
+    )
+
+    log = parsear_log_scraper(ruta_log)
+    tabla = preparar_tabla_monitoreo_corrida(log)
+    alertas = preparar_alertas_monitoreo_corrida(log)
+
+    assert tabla.loc[0, "Paso"] == "Sync final"
+    assert tabla.loc[0, "Estado"] == "OK con reparación"
+    assert tabla.loc[0, "Reparados"] == 127095
+    assert tabla.loc[0, "Pendientes"] == 127095
+    assert alertas == [
+        {
+            "nivel": "warning",
+            "titulo": "Sync final reparó Supabase",
+            "detalle": "Se enviaron 127095 histórico(s) faltante(s) después del scrapeo.",
+        }
+    ]
 
 
 def test_parsear_log_scraper_resume_avisos_por_supermercado(tmp_path):
