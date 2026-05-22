@@ -15,6 +15,7 @@ from database import (  # noqa: E402
     COLUMNAS_BASE,
     COLUMNAS_EXTRA,
     RUTA_DB,
+    TAMANO_LOTE_SUPABASE,
     dividir_en_lotes,
     guardar_en_supabase,
     inicializar_supabase,
@@ -22,6 +23,8 @@ from database import (  # noqa: E402
 )
 
 TAMANO_LOTE_LECTURA = 1000
+INTERVALO_PROGRESO_SUPABASE_PAGINAS = 25
+INTERVALO_PROGRESO_SQLITE = 50000
 COLUMNAS_SYNC = tuple(COLUMNAS_BASE) + tuple(COLUMNAS_EXTRA)
 
 
@@ -70,6 +73,7 @@ def cargar_productos_sqlite(ruta_db):
 def cargar_claves_supabase(supabase):
     claves = set()
     inicio = 0
+    pagina = 0
 
     while True:
         fin = inicio + TAMANO_LOTE_LECTURA - 1
@@ -85,13 +89,21 @@ def cargar_claves_supabase(supabase):
         if not lote:
             break
 
+        pagina += 1
         claves.update(clave_producto(producto) for producto in lote)
+
+        if pagina == 1 or pagina % INTERVALO_PROGRESO_SUPABASE_PAGINAS == 0:
+            print(
+                "Supabase claves: "
+                f"pagina {pagina}, {len(claves)} claves acumuladas"
+            )
 
         if len(lote) < TAMANO_LOTE_LECTURA:
             break
 
         inicio += TAMANO_LOTE_LECTURA
 
+    print(f"Paginas Supabase leidas: {pagina}")
     return claves
 
 
@@ -99,16 +111,24 @@ def detectar_faltantes(productos_sqlite, claves_supabase, limite=None):
     faltantes = []
     vistos = set()
 
-    for producto in productos_sqlite:
+    for indice, producto in enumerate(productos_sqlite, start=1):
         clave = clave_producto(producto)
 
-        if clave in claves_supabase or clave in vistos:
-            continue
+        if clave not in claves_supabase and clave not in vistos:
+            faltantes.append(producto)
+            vistos.add(clave)
 
-        faltantes.append(producto)
-        vistos.add(clave)
+        if indice % INTERVALO_PROGRESO_SQLITE == 0:
+            print(
+                "SQLite revisados: "
+                f"{indice}; faltantes acumulados: {len(faltantes)}"
+            )
 
         if limite is not None and len(faltantes) >= limite:
+            print(
+                "Deteccion detenida por limite: "
+                f"{len(faltantes)} faltante(s)"
+            )
             break
 
     return faltantes
@@ -140,9 +160,30 @@ def sincronizar_faltantes(faltantes, aplicar=False):
         print("Modo revision: no se envio nada. Usa --apply para sincronizar.")
         return 0
 
+    total_lotes = (len(faltantes) + TAMANO_LOTE_SUPABASE - 1) // TAMANO_LOTE_SUPABASE
+    print(
+        "Lotes a enviar a Supabase: "
+        f"{total_lotes} de hasta {TAMANO_LOTE_SUPABASE} registros"
+    )
     sincronizados = guardar_en_supabase(faltantes)
     print(f"Historicos enviados a Supabase: {sincronizados}")
     return sincronizados
+
+
+def verificar_sync_final(productos_sqlite, supabase, limite=None):
+    if limite is not None:
+        print("Validacion final omitida por --limite: sincronizacion parcial.")
+        return None
+
+    print("Validacion final: revisando Supabase despues del sync.")
+    claves_finales = cargar_claves_supabase(supabase)
+    pendientes = detectar_faltantes(productos_sqlite, claves_finales)
+    print(f"Pendientes finales: {len(pendientes)}")
+
+    if not pendientes:
+        print("Supabase verificado: sin faltantes.")
+
+    return len(pendientes)
 
 
 def main():
@@ -165,7 +206,19 @@ def main():
         limite=argumentos.limite,
     )
     mostrar_resumen(productos_sqlite, claves_supabase, faltantes)
-    sincronizar_faltantes(faltantes, aplicar=argumentos.apply)
+    sincronizados = sincronizar_faltantes(faltantes, aplicar=argumentos.apply)
+
+    if argumentos.apply and faltantes:
+        pendientes_finales = verificar_sync_final(
+            productos_sqlite,
+            supabase,
+            limite=argumentos.limite,
+        )
+        if pendientes_finales is not None and pendientes_finales > 0:
+            return 2
+        if sincronizados < len(faltantes):
+            return 2
+
     return 0
 
 

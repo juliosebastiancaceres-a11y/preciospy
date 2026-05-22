@@ -3,7 +3,9 @@ from scripts.sync_sqlite_to_supabase import (
     cargar_claves_supabase,
     clave_producto,
     detectar_faltantes,
+    main,
     sincronizar_faltantes,
+    verificar_sync_final,
 )
 
 
@@ -188,3 +190,166 @@ def test_sincronizar_faltantes_apply_envia(monkeypatch):
     )
 
     assert sincronizados == 2
+
+def test_cargar_claves_supabase_muestra_progreso(monkeypatch, capsys):
+    class Respuesta:
+        def __init__(self, data):
+            self.data = data
+
+    class Query:
+        def __init__(self, lotes):
+            self.lotes = lotes
+            self.rango = None
+
+        def select(self, columnas):
+            return self
+
+        def order(self, columna):
+            return self
+
+        def range(self, inicio, fin):
+            self.rango = (inicio, fin)
+            return self
+
+        def execute(self):
+            indice = self.rango[0]
+            return Respuesta(self.lotes[indice])
+
+    class SupabaseFake:
+        def __init__(self):
+            self.lotes = [
+                [
+                    {
+                        "supermercado": "Stock",
+                        "nombre_producto": "Arroz",
+                        "fecha_registro": "2026-05-22",
+                    }
+                ],
+                [],
+            ]
+
+        def table(self, nombre):
+            return Query(self.lotes)
+
+    monkeypatch.setattr("scripts.sync_sqlite_to_supabase.TAMANO_LOTE_LECTURA", 1)
+    monkeypatch.setattr(
+        "scripts.sync_sqlite_to_supabase.INTERVALO_PROGRESO_SUPABASE_PAGINAS",
+        1,
+    )
+
+    cargar_claves_supabase(SupabaseFake())
+
+    salida = capsys.readouterr().out
+    assert "Supabase claves: pagina 1, 1 claves acumuladas" in salida
+    assert "Paginas Supabase leidas: 1" in salida
+
+
+def test_detectar_faltantes_muestra_progreso(monkeypatch, capsys):
+    productos = [
+        {
+            "supermercado": "Stock",
+            "nombre_producto": "Producto A",
+            "fecha_registro": "2026-05-22",
+        },
+        {
+            "supermercado": "Stock",
+            "nombre_producto": "Producto B",
+            "fecha_registro": "2026-05-22",
+        },
+    ]
+    monkeypatch.setattr("scripts.sync_sqlite_to_supabase.INTERVALO_PROGRESO_SQLITE", 1)
+
+    detectar_faltantes(productos, set())
+
+    salida = capsys.readouterr().out
+    assert "SQLite revisados: 1; faltantes acumulados: 1" in salida
+    assert "SQLite revisados: 2; faltantes acumulados: 2" in salida
+
+
+def test_sincronizar_faltantes_apply_muestra_lotes(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "scripts.sync_sqlite_to_supabase.guardar_en_supabase",
+        lambda productos: len(productos),
+    )
+
+    sincronizados = sincronizar_faltantes(
+        [{"nombre_producto": "A"}, {"nombre_producto": "B"}],
+        aplicar=True,
+    )
+
+    salida = capsys.readouterr().out
+    assert sincronizados == 2
+    assert "Lotes a enviar a Supabase: 1 de hasta" in salida
+    assert "Historicos enviados a Supabase: 2" in salida
+
+
+def test_verificar_sync_final_confirma_sin_faltantes(monkeypatch, capsys):
+    productos = [
+        {
+            "supermercado": "Stock",
+            "nombre_producto": "Arroz",
+            "fecha_registro": "2026-05-22",
+            "precio": 10000,
+        }
+    ]
+    claves = {("Stock", "Arroz", "2026-05-22")}
+    monkeypatch.setattr(
+        "scripts.sync_sqlite_to_supabase.cargar_claves_supabase",
+        lambda supabase: claves,
+    )
+
+    pendientes = verificar_sync_final(productos, object())
+
+    salida = capsys.readouterr().out
+    assert pendientes == 0
+    assert "Pendientes finales: 0" in salida
+    assert "Supabase verificado: sin faltantes." in salida
+
+
+def test_verificar_sync_final_omite_validacion_con_limite(capsys):
+    pendientes = verificar_sync_final([], object(), limite=5)
+
+    salida = capsys.readouterr().out
+    assert pendientes is None
+    assert "Validacion final omitida por --limite" in salida
+
+
+def test_main_devuelve_error_si_quedan_pendientes(monkeypatch, tmp_path):
+    db = tmp_path / "preciospy.db"
+    db.write_text("base ficticia")
+    productos = [
+        {
+            "supermercado": "Stock",
+            "nombre_producto": "Arroz",
+            "fecha_registro": "2026-05-22",
+            "precio": 10000,
+        }
+    ]
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["sync_sqlite_to_supabase.py", "--apply", "--db", str(db)],
+    )
+    monkeypatch.setattr(
+        "scripts.sync_sqlite_to_supabase.cargar_productos_sqlite",
+        lambda ruta: productos,
+    )
+    monkeypatch.setattr(
+        "scripts.sync_sqlite_to_supabase.inicializar_supabase",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        "scripts.sync_sqlite_to_supabase.cargar_claves_supabase",
+        lambda supabase: set(),
+    )
+    monkeypatch.setattr(
+        "scripts.sync_sqlite_to_supabase.guardar_en_supabase",
+        lambda faltantes: len(faltantes),
+    )
+    monkeypatch.setattr(
+        "scripts.sync_sqlite_to_supabase.verificar_sync_final",
+        lambda productos_sqlite, supabase, limite=None: 1,
+    )
+
+    assert main() == 2
+
