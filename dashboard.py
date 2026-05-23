@@ -232,6 +232,23 @@ def aplicar_estilos():
                 font-weight: 750;
             }
 
+            [data-testid="stMultiSelect"] [data-baseweb="tag"] {
+                margin: 0.16rem 0.18rem;
+                max-width: 100%;
+                min-height: 1.8rem;
+                min-width: 4.5rem;
+                overflow: visible !important;
+                padding-left: 0.72rem !important;
+                padding-right: 0.28rem !important;
+            }
+
+            [data-testid="stMultiSelect"] [data-baseweb="tag"] span {
+                max-width: none;
+                overflow: visible !important;
+                text-overflow: clip !important;
+                white-space: nowrap !important;
+            }
+
             [data-testid="stSidebar"] input,
             [data-testid="stSidebar"] textarea,
             [data-testid="stSidebar"] [data-baseweb="input"],
@@ -782,6 +799,443 @@ def aplicar_estilos():
                 position: absolute;
             }
 
+            /* 2026 UI refresh: dashboard operativo, menos decorativo. */
+            :root {
+                --py-red: #C9342A;
+                --py-red-deep: #9F241E;
+                --py-blue: #2457A6;
+                --py-blue-soft: #EAF1FF;
+                --py-bg: #F4F6FA;
+                --py-surface: #FFFFFF;
+                --py-text: #101828;
+                --py-muted: #5F6B7A;
+                --py-border: #D8DEE8;
+                --py-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+            }
+
+            .stApp {
+                background: var(--py-bg);
+            }
+
+            .block-container {
+                animation: none;
+                max-width: 1440px;
+                padding-top: 0.75rem;
+            }
+
+            [data-testid="stHeader"] {
+                background: var(--py-bg) !important;
+                border-bottom: 1px solid rgba(216, 222, 232, 0.72);
+                height: 2.25rem !important;
+                min-height: 2.25rem !important;
+            }
+
+            [data-testid="stSidebar"] {
+                background: #FFFFFF !important;
+                border-right: 1px solid var(--py-border);
+                box-shadow: none;
+                min-width: 20rem !important;
+                width: 20rem !important;
+            }
+
+            [data-testid="stSidebar"][aria-expanded="false"],
+            section[data-testid="stSidebar"][aria-expanded="false"] {
+                min-width: 20rem !important;
+                width: 20rem !important;
+            }
+
+            [data-testid="stSidebar"] h3 {
+                border-bottom: 1px solid var(--py-border);
+                color: var(--py-text);
+                font-size: 0.98rem;
+                margin-bottom: 0.65rem;
+                padding-bottom: 0.55rem;
+            }
+
+            [data-testid="stSidebar"] .stButton > button,
+            .stDownloadButton > button,
+            .stButton > button {
+                border-radius: 8px !important;
+                box-shadow: none !important;
+                font-weight: 700 !important;
+                min-height: 2.45rem;
+                transition: background-color 120ms ease, border-color 120ms ease;
+            }
+
+            [data-testid="stSidebar"] .stButton > button {
+                background: var(--py-blue) !important;
+                border: 1px solid var(--py-blue) !important;
+            }
+
+            [data-testid="stSidebar"] .stButton > button:hover {
+                background: #1C478A !important;
+                transform: none;
+            }
+
+            .py-hero {
+                animation: none;
+                background: #FFFFFF;
+                border: 1px solid var(--py-border);
+                border-left: 5px solid var(--py-red);
+                border-radius: 8px;
+                box-shadow: var(--py-shadow);
+                color: var(--py-text);
+                margin: 0 0 0.95rem;
+                padding: 1.05rem 1.15rem;
+            }
+
+            .py-hero::before,
+            .py-hero::after {
+                display: none;
+            }
+
+            .hero-kicker {
+                margin-bottom: 0.45rem;
+            }
+
+            .py-badge,
+            .py-badge.light {
+                background: #F8FAFC;
+                border: 1px solid var(--py-border);
+                border-radius: 999px;
+                color: var(--py-muted) !important;
+                font-size: 0.72rem;
+                font-weight: 760;
+                padding: 0.24rem 0.55rem;
+            }
+
+            .app-title {
+                color: var(--py-text) !important;
+                font-size: 1.82rem;
+                line-height: 1.12;
+            }
+
+            .app-subtitle {
+                color: var(--py-muted) !important;
+                font-size: 0.94rem;
+                max-width: 840px;
+            }
+
+            .metric-card,
+            .health-card,
+            .content-card,
+            .filter-summary,
+            [data-testid="stMetric"],
+            [data-testid="stVegaLiteChart"],
+            [data-testid="stDataFrame"],
+            [data-testid="stVerticalBlockBorderWrapper"] {
+                animation: none;
+                background: #FFFFFF;
+                border: 1px solid var(--py-border);
+                border-radius: 8px !important;
+                box-shadow: var(--py-shadow);
+                transform: none;
+                transition: border-color 120ms ease, box-shadow 120ms ease;
+            }
+
+            .metric-card {
+                min-height: 106px;
+                padding: 0.82rem 0.88rem;
+            }
+
+            .metric-card::before {
+                background: var(--py-blue);
+                height: 3px;
+            }
+
+            .metric-card::after {
+                display: none;
+            }
+
+            .metric-card:hover,
+            .health-card:hover,
+            .content-card:hover,
+            .filter-summary:hover,
+            [data-testid="stVegaLiteChart"]:hover,
+            [data-testid="stDataFrame"]:hover,
+            [data-testid="stVerticalBlockBorderWrapper"]:hover {
+                border-color: #A8B4C7 !important;
+                box-shadow: 0 4px 12px rgba(16, 24, 40, 0.08);
+                transform: none;
+            }
+
+            .metric-topline {
+                gap: 0.45rem;
+                margin-bottom: 0.45rem;
+            }
+
+            .metric-icon {
+                background: var(--py-blue-soft);
+                border-radius: 7px;
+                color: var(--py-blue);
+                font-size: 0.78rem;
+                font-weight: 850;
+                height: 1.75rem;
+                width: 1.75rem;
+            }
+
+            .metric-card:hover .metric-icon {
+                background: var(--py-blue-soft);
+                color: var(--py-blue);
+                transform: none;
+            }
+
+            .metric-label,
+            .health-label,
+            [data-testid="stMetricLabel"] * {
+                color: var(--py-muted) !important;
+                font-size: 0.72rem !important;
+                letter-spacing: 0;
+                text-transform: none;
+            }
+
+            .metric-value {
+                color: var(--py-text) !important;
+                font-size: 1.45rem;
+                letter-spacing: 0;
+            }
+
+            .metric-desc,
+            .health-desc,
+            .section-copy {
+                color: var(--py-muted) !important;
+            }
+
+            .health-grid {
+                gap: 0.65rem;
+            }
+
+            .health-card {
+                min-height: 100px;
+                padding: 0.75rem 0.8rem;
+            }
+
+            .health-value {
+                font-size: clamp(0.96rem, 1.2vw, 1.16rem);
+            }
+
+            .section-heading {
+                align-items: center;
+                border-top: 1px solid var(--py-border);
+                margin: 1.35rem 0 0.7rem;
+                padding-top: 1rem;
+            }
+
+            .section-title {
+                font-size: 1.05rem;
+            }
+
+            .section-pill,
+            .filter-chip,
+            [data-baseweb="tag"] {
+                background: #F8FAFC !important;
+                border: 1px solid var(--py-border) !important;
+                border-radius: 999px !important;
+                color: var(--py-text) !important;
+            }
+
+            .filter-summary {
+                margin-top: 0.85rem;
+                padding: 0.62rem 0.72rem;
+            }
+
+            div[data-testid="stTabs"] button {
+                border-radius: 8px 8px 0 0;
+                color: var(--py-muted);
+                font-weight: 700;
+            }
+
+            div[data-testid="stTabs"] button[aria-selected="true"] {
+                background: #FFFFFF;
+                color: var(--py-blue);
+            }
+
+            [data-baseweb="select"],
+            [data-baseweb="input"],
+            [data-testid="stDateInput"] input {
+                border-radius: 8px !important;
+            }
+
+            [data-testid="stSlider"] [role="slider"] {
+                background: var(--py-blue) !important;
+                border-color: #FFFFFF !important;
+            }
+
+            [data-testid="stDataFrame"] {
+                overflow: hidden;
+            }
+
+            [data-testid="stCaptionContainer"],
+            [data-testid="stCaptionContainer"] * {
+                color: var(--py-muted) !important;
+                font-size: 0.82rem;
+            }
+
+            [data-testid="collapsedControl"],
+            [data-testid="stSidebarCollapseButton"] {
+                border-radius: 8px !important;
+                box-shadow: var(--py-shadow) !important;
+            }
+
+            .status-strip {
+                align-items: stretch;
+                display: grid;
+                gap: 0.65rem;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                margin: 0.35rem 0 0.95rem;
+            }
+
+            .status-item {
+                background: #FFFFFF;
+                border: 1px solid var(--py-border);
+                border-radius: 8px;
+                box-shadow: var(--py-shadow);
+                min-height: 74px;
+                padding: 0.72rem 0.82rem;
+            }
+
+            .status-label {
+                color: var(--py-muted) !important;
+                font-size: 0.72rem;
+                font-weight: 760;
+                margin-bottom: 0.25rem;
+            }
+
+            .status-value {
+                align-items: center;
+                color: var(--py-text) !important;
+                display: flex;
+                flex-wrap: wrap;
+                font-size: 0.98rem;
+                font-weight: 820;
+                gap: 0.32rem;
+                line-height: 1.25;
+            }
+
+            .status-pill,
+            .supermarket-badge,
+            .alert-pill {
+                align-items: center;
+                border-radius: 999px;
+                display: inline-flex;
+                font-size: 0.74rem;
+                font-weight: 780;
+                line-height: 1;
+                min-height: 1.55rem;
+                padding: 0.28rem 0.55rem;
+                white-space: nowrap;
+            }
+
+            .status-pill {
+                background: #EFF8F3;
+                border: 1px solid #B7E4C7;
+                color: #116149 !important;
+            }
+
+            .status-en-curso,
+            .status-ok-con-avisos,
+            .status-ok-con-reparacion {
+                background: #FFF7E6;
+                border-color: #F5C56B;
+                color: #8A5A00 !important;
+            }
+
+            .status-error,
+            .status-error-lectura {
+                background: #FFF1F0;
+                border-color: #FFB4AB;
+                color: #A61D18 !important;
+            }
+
+            .supermarket-badge {
+                background: color-mix(in srgb, var(--market-color) 12%, white);
+                border: 1px solid color-mix(in srgb, var(--market-color) 34%, white);
+                color: color-mix(in srgb, var(--market-color) 76%, #101828) !important;
+            }
+
+            .opportunity-grid {
+                display: grid;
+                gap: 0.75rem;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                margin: 0.8rem 0 0.95rem;
+            }
+
+            .opportunity-card {
+                background: #FFFFFF;
+                border: 1px solid var(--py-border);
+                border-radius: 8px;
+                box-shadow: var(--py-shadow);
+                display: flex;
+                flex-direction: column;
+                gap: 0.55rem;
+                min-height: 184px;
+                padding: 0.85rem;
+            }
+
+            .opportunity-title {
+                color: var(--py-text) !important;
+                font-size: 0.94rem;
+                font-weight: 820;
+                line-height: 1.25;
+            }
+
+            .opportunity-meta {
+                align-items: center;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.35rem;
+            }
+
+            .opportunity-price-row {
+                align-items: flex-end;
+                display: flex;
+                gap: 0.7rem;
+                justify-content: space-between;
+            }
+
+            .opportunity-price {
+                color: var(--py-text) !important;
+                font-size: 1.28rem;
+                font-weight: 860;
+            }
+
+            .opportunity-save {
+                color: var(--py-red-deep) !important;
+                font-size: 1.02rem;
+                font-weight: 840;
+                text-align: right;
+            }
+
+            .opportunity-detail {
+                color: var(--py-muted) !important;
+                font-size: 0.78rem;
+                line-height: 1.35;
+            }
+
+            .main-tabs [data-testid="stTabs"] {
+                margin-top: 0.85rem;
+            }
+
+            [data-testid="stSidebar"] [data-testid="stExpander"] {
+                border: 1px solid var(--py-border);
+                border-radius: 8px;
+                box-shadow: none;
+            }
+
+            @media (max-width: 1100px) {
+                .status-strip,
+                .opportunity-grid {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+
+            @media (max-width: 720px) {
+                .status-strip,
+                .opportunity-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+
             @media (prefers-reduced-motion: reduce) {
                 .block-container,
                 .py-hero,
@@ -1052,6 +1506,29 @@ def obtener_colores_supermercados(supermercados):
     return dominio, colores
 
 
+def obtener_color_supermercado(supermercado):
+    """Devuelve el color visual definido para un supermercado."""
+    _, colores = obtener_colores_supermercados([supermercado])
+    return colores[0] if colores else "#2457A6"
+
+
+def construir_badge_supermercado(supermercado):
+    """Genera un badge HTML compacto con color consistente por supermercado."""
+    nombre = str(supermercado or "Sin supermercado")
+    color = obtener_color_supermercado(nombre)
+    return (
+        f'<span class="supermarket-badge" style="--market-color: {color};">'
+        f"{escape(nombre)}</span>"
+    )
+
+
+def construir_badge_estado(estado):
+    """Genera un badge HTML para estados operativos."""
+    estado_texto = str(estado or "Sin datos")
+    clave = normalizar_nombre_comparable(estado_texto).lower().replace(" ", "-")
+    return f'<span class="status-pill status-{clave}">{escape(estado_texto)}</span>'
+
+
 def preparar_terminos_busqueda(texto_busqueda):
     """Convierte una busqueda vaga en terminos normalizados independientes."""
     texto_normalizado = normalizar_nombre_comparable(texto_busqueda)
@@ -1228,6 +1705,24 @@ def obtener_rango_fechas(precios):
         return None
 
     return fechas.min().date(), fechas.max().date()
+
+
+def obtener_rango_fechas_preset(rango_fechas, preset):
+    """Calcula un rango visible desde un preset sin limitar la carga base."""
+    if not rango_fechas:
+        return None
+
+    fecha_minima, fecha_maxima = rango_fechas
+    if preset == "Hoy":
+        inicio = fecha_maxima
+    elif preset == "Últimos 7 días":
+        inicio = max(fecha_minima, fecha_maxima - timedelta(days=6))
+    elif preset == "Mes actual":
+        inicio = max(fecha_minima, fecha_maxima.replace(day=1))
+    else:
+        inicio = fecha_minima
+
+    return inicio, fecha_maxima
 
 
 def formatear_fecha_hora(valor):
@@ -1894,14 +2389,14 @@ def mostrar_header():
         <div class="py-hero">
             <div class="hero-content">
                 <div class="hero-kicker">
-                    <span class="py-badge light">🗺️ Hecho en Paraguay</span>
-                    <span class="py-badge">📊 Datos actualizados diariamente</span>
-                    <span class="py-badge">🔍 +14.000 productos monitoreados</span>
+                    <span class="py-badge light">Paraguay</span>
+                    <span class="py-badge">Actualización diaria</span>
+                    <span class="py-badge">+14.000 productos</span>
                 </div>
                 <p class="app-title">PreciosPY</p>
                 <p class="app-subtitle">
-                    Compará precios de supermercados en Paraguay con datos claros,
-                    históricos y fáciles de explorar.
+                    Monitor de precios para comparar supermercados, revisar históricos
+                    y encontrar oportunidades con datos locales.
                 </p>
             </div>
         </div>
@@ -1923,19 +2418,19 @@ def mostrar_metricas(precios):
     columnas = st.columns(5)
     metricas = [
         (
-            "🛒",
+            "PU",
             "Productos únicos",
             f"{productos_unicos:,}".replace(",", "."),
             "Producto + supermercado",
         ),
         (
-            "📈",
+            "RH",
             "Registros históricos",
             f"{total_registros:,}".replace(",", "."),
             "Precios guardados",
         ),
-        ("🏬", "Supermercados", supermercados, "Fuentes monitoreadas"),
-        ("📅", "Días monitoreados", dias_registrados, "Fechas con datos"),
+        ("SM", "Supermercados", supermercados, "Fuentes monitoreadas"),
+        ("DI", "Días monitoreados", dias_registrados, "Fechas con datos"),
         ("✓", "Última actualización", ultima_actualizacion, "Dato más reciente"),
     ]
 
@@ -1956,6 +2451,44 @@ def mostrar_metricas(precios):
             """,
             unsafe_allow_html=True,
         )
+
+
+def mostrar_barra_estado(precios, fuente):
+    """Muestra estado operativo compacto antes de las vistas principales."""
+    salud = obtener_salud_scraper()
+    ultima_sync = obtener_ultima_sincronizacion(precios)
+    monitoreo = obtener_estado_monitoreo(precios)
+    estado_html = construir_badge_estado(salud["estado"])
+    dias_sin_datos = monitoreo["dias_sin_datos"]
+    dias_estado = (
+        construir_badge_estado("OK")
+        if dias_sin_datos == 0
+        else construir_badge_estado("OK con avisos")
+    )
+
+    st.markdown(
+        f"""
+        <div class="status-strip">
+            <div class="status-item">
+                <div class="status-label">Fuente</div>
+                <div class="status-value">{escape(str(fuente))}</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Última sincronización</div>
+                <div class="status-value">{escape(str(ultima_sync))}</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Último scraper</div>
+                <div class="status-value">{estado_html}</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Continuidad</div>
+                <div class="status-value">{dias_estado} {dias_sin_datos} día(s) sin datos</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def mostrar_salud_sistema(precios, fuente):
@@ -1999,19 +2532,22 @@ def mostrar_salud_sistema(precios, fuente):
             "Supermercados con días faltantes",
         ),
     ]
-    columnas = st.columns(6)
-
-    for columna, (etiqueta, valor, descripcion) in zip(columnas, tarjetas):
-        columna.markdown(
-            f"""
-            <div class="health-card">
-                <div class="health-label">{escape(str(etiqueta))}</div>
-                <div class="health-value">{escape(str(valor))}</div>
-                <div class="health-desc">{escape(str(descripcion))}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    for indice in range(0, len(tarjetas), 3):
+        columnas = st.columns(3)
+        for columna, (etiqueta, valor, descripcion) in zip(
+            columnas,
+            tarjetas[indice : indice + 3],
+        ):
+            columna.markdown(
+                f"""
+                <div class="health-card">
+                    <div class="health-label">{escape(str(etiqueta))}</div>
+                    <div class="health-value">{escape(str(valor))}</div>
+                    <div class="health-desc">{escape(str(descripcion))}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     if monitoreo_supermercados:
         tabla_monitoreo = preparar_tabla_monitoreo_supermercados(
@@ -2100,12 +2636,13 @@ def mostrar_filtros(precios):
     rango_fechas = obtener_rango_fechas(precios)
 
     st.sidebar.markdown("### Filtros")
-    st.sidebar.caption("Encontrá precios por producto, supermercado y período.")
+    st.sidebar.caption("Ajustá la vista sin cambiar la base histórica cargada.")
 
     if st.sidebar.button("Limpiar filtros", use_container_width=True):
         st.session_state["filtro_supermercados"] = supermercados
         st.session_state["filtro_busqueda"] = ""
         st.session_state["filtro_precio"] = (precio_minimo, precio_maximo)
+        st.session_state["filtro_periodo_preset"] = "Todo"
         if rango_fechas:
             st.session_state["filtro_fechas"] = rango_fechas
 
@@ -2120,19 +2657,20 @@ def mostrar_filtros(precios):
 
     st.session_state.setdefault("filtro_busqueda", "")
     st.session_state.setdefault("filtro_precio", (precio_minimo, precio_maximo))
+    st.session_state.setdefault("filtro_periodo_preset", "Todo")
 
     if rango_fechas:
         st.session_state.setdefault("filtro_fechas", rango_fechas)
 
-    supermercados_seleccionados = st.sidebar.multiselect(
-        "Supermercado",
-        supermercados,
-        key="filtro_supermercados",
-    )
     texto_busqueda = st.sidebar.text_input(
         "Filtrar por producto",
         placeholder="Ej. arroz, aceite, leche",
         key="filtro_busqueda",
+    )
+    supermercados_seleccionados = st.sidebar.multiselect(
+        "Supermercado",
+        supermercados,
+        key="filtro_supermercados",
     )
     precio_actual = st.session_state.get("filtro_precio")
     if (
@@ -2144,32 +2682,49 @@ def mostrar_filtros(precios):
     ):
         st.session_state["filtro_precio"] = (precio_minimo, precio_maximo)
 
-    if precio_minimo < precio_maximo:
-        rango_precio = st.sidebar.slider(
-            "Rango de precios",
-            min_value=precio_minimo,
-            max_value=precio_maximo,
-            key="filtro_precio",
-            format="₲ %d",
-        )
-    else:
-        rango_precio = (precio_minimo, precio_maximo)
-        st.session_state["filtro_precio"] = rango_precio
-        st.sidebar.caption(f"Rango de precios: {formatear_guaranies(precio_minimo)}")
-
     rango_fecha = None
     if rango_fechas:
-        valor_fecha = st.sidebar.date_input(
-            "Período",
-            min_value=rango_fechas[0],
-            max_value=rango_fechas[1],
-            key="filtro_fechas",
+        preset_periodo = st.sidebar.radio(
+            "Período rápido",
+            ["Todo", "Hoy", "Últimos 7 días", "Mes actual", "Personalizado"],
+            horizontal=False,
+            key="filtro_periodo_preset",
         )
 
-        if isinstance(valor_fecha, tuple) and len(valor_fecha) == 2:
-            rango_fecha = valor_fecha
-        elif isinstance(valor_fecha, list) and len(valor_fecha) == 2:
-            rango_fecha = tuple(valor_fecha)
+        if preset_periodo == "Personalizado":
+            valor_fecha = st.sidebar.date_input(
+                "Período personalizado",
+                min_value=rango_fechas[0],
+                max_value=rango_fechas[1],
+                key="filtro_fechas",
+            )
+
+            if isinstance(valor_fecha, tuple) and len(valor_fecha) == 2:
+                rango_fecha = valor_fecha
+            elif isinstance(valor_fecha, list) and len(valor_fecha) == 2:
+                rango_fecha = tuple(valor_fecha)
+        else:
+            rango_fecha = obtener_rango_fechas_preset(rango_fechas, preset_periodo)
+            st.session_state["filtro_fechas"] = rango_fecha
+            st.sidebar.caption(
+                f"{rango_fecha[0]} a {rango_fecha[1]}"
+                if rango_fecha
+                else "Sin rango de fechas"
+            )
+
+    with st.sidebar.expander("Filtros avanzados", expanded=False):
+        if precio_minimo < precio_maximo:
+            rango_precio = st.slider(
+                "Rango de precios",
+                min_value=precio_minimo,
+                max_value=precio_maximo,
+                key="filtro_precio",
+                format="₲ %d",
+            )
+        else:
+            rango_precio = (precio_minimo, precio_maximo)
+            st.session_state["filtro_precio"] = rango_precio
+            st.caption(f"Rango de precios: {formatear_guaranies(precio_minimo)}")
 
     return supermercados_seleccionados, texto_busqueda, rango_precio, rango_fecha
 
@@ -2494,22 +3049,10 @@ def preparar_tabla_comparacion(comparacion):
         return comparacion.copy()
 
     tabla = comparacion.copy()
-    columnas_excluidas = {
-        "Producto comparable",
-        "Categoría comparable",
-        "Producto mejor precio",
-        "Supermercado más barato",
-        "Coincidencia",
-        "Confianza",
-        "Supermercados comparados",
-        "Productos comparados",
-        "Categorías comparadas",
-        "Ahorro %",
-        "Fecha",
-    }
-    columnas_precio = [
-        columna for columna in tabla.columns if columna not in columnas_excluidas
-    ]
+    columnas_precio = obtener_columnas_supermercado_comparacion(tabla)
+    columnas_precio.extend(
+        columna for columna in ["Mejor precio", "Diferencia"] if columna in tabla.columns
+    )
 
     for columna in columnas_precio:
         tabla[columna] = tabla[columna].map(
@@ -2772,6 +3315,88 @@ def abreviar_texto(texto, limite=58):
     return f"{texto[: limite - 3].rstrip()}..."
 
 
+def obtener_columnas_supermercado_comparacion(comparacion):
+    """Identifica columnas numericas de supermercados en una comparacion."""
+    columnas_no_supermercado = {
+        "Producto comparable",
+        "Categoría comparable",
+        "Producto mejor precio",
+        "Supermercado más barato",
+        "Coincidencia",
+        "Confianza",
+        "Supermercados comparados",
+        "Productos comparados",
+        "Categorías comparadas",
+        "Mejor precio",
+        "Diferencia",
+        "Ahorro %",
+        "Fecha",
+    }
+    return [
+        columna
+        for columna in comparacion.columns
+        if columna not in columnas_no_supermercado
+    ]
+
+
+def mostrar_oportunidades_comparacion(comparacion):
+    """Muestra tarjetas con oportunidades destacadas de ahorro."""
+    if comparacion.empty:
+        return
+
+    columnas_supermercado = obtener_columnas_supermercado_comparacion(comparacion)
+    tarjetas = []
+
+    for _, fila in comparacion.head(3).iterrows():
+        precios_supermercado = {
+            supermercado: fila[supermercado]
+            for supermercado in columnas_supermercado
+            if supermercado in fila and not pd.isna(fila[supermercado])
+        }
+        if precios_supermercado:
+            supermercado_mayor = max(
+                precios_supermercado,
+                key=precios_supermercado.get,
+            )
+            precio_mayor = precios_supermercado[supermercado_mayor]
+        else:
+            supermercado_mayor = "Otro súper"
+            precio_mayor = fila["Mejor precio"] + fila["Diferencia"]
+
+        supermercado_barato = fila["Supermercado más barato"]
+        tarjetas.append(
+            (
+                '<div class="opportunity-card">'
+                f'<div class="opportunity-title">{escape(str(fila["Producto comparable"]))}</div>'
+                '<div class="opportunity-meta">'
+                f"{construir_badge_supermercado(supermercado_barato)}"
+                f'<span class="status-pill">{escape(str(fila["Coincidencia"]))}</span>'
+                f'<span class="status-pill">{escape(str(fila["Categoría comparable"]))}</span>'
+                "</div>"
+                '<div class="opportunity-price-row">'
+                "<div>"
+                '<div class="status-label">Mejor precio</div>'
+                f'<div class="opportunity-price">{formatear_guaranies(fila["Mejor precio"])}</div>'
+                "</div>"
+                "<div>"
+                '<div class="status-label">Ahorro posible</div>'
+                f'<div class="opportunity-save">{formatear_guaranies(fila["Diferencia"])}</div>'
+                "</div>"
+                "</div>"
+                '<div class="opportunity-detail">'
+                f"Frente a {escape(str(supermercado_mayor))} ({formatear_guaranies(precio_mayor)}). "
+                f'Producto base: {escape(str(fila["Producto mejor precio"]))}'
+                "</div>"
+                "</div>"
+            )
+        )
+
+    st.markdown(
+        f'<div class="opportunity-grid">{"".join(tarjetas)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def mostrar_grafico(precios):
     """Muestra un grafico de precios para los productos filtrados."""
     mostrar_encabezado_seccion(
@@ -2876,7 +3501,25 @@ def mostrar_comparacion_supermercados(precios):
         "Matching",
     )
 
-    comparacion = preparar_comparacion_supermercados(precios)
+    calcular = st.toggle(
+        "Calcular comparación con los filtros actuales",
+        value=False,
+        key="calcular_comparacion_supermercados",
+        help=(
+            "Esta vista hace matching entre productos equivalentes y puede tardar "
+            "si el período seleccionado incluye todo el histórico."
+        ),
+    )
+
+    if not calcular:
+        st.info(
+            "Activá el cálculo cuando quieras revisar oportunidades entre supermercados. "
+            "Para una respuesta más rápida, usá un período corto como Hoy o Últimos 7 días."
+        )
+        return
+
+    with st.spinner("Calculando coincidencias entre supermercados..."):
+        comparacion = preparar_comparacion_supermercados(precios)
 
     if comparacion.empty:
         st.info(
@@ -2994,6 +3637,8 @@ def mostrar_comparacion_supermercados(precios):
         "Mayor diferencia filtrada",
         formatear_guaranies(comparacion_filtrada["Diferencia"].max()),
     )
+
+    mostrar_oportunidades_comparacion(comparacion_filtrada)
 
     with st.expander("Resumen por categoría"):
         st.dataframe(
@@ -3515,18 +4160,43 @@ def mostrar_dashboard():
         return
 
     mostrar_metricas(precios)
-    mostrar_salud_sistema(precios, fuente)
+    mostrar_barra_estado(precios, fuente)
     filtros = mostrar_filtros(precios)
     precios_filtrados = filtrar_precios(precios, *filtros)
     mostrar_resumen_filtros(precios_filtrados, len(precios), filtros)
 
-    mostrar_grafico(precios_filtrados)
-    mostrar_comparacion_supermercados(precios_filtrados)
-    mostrar_evolucion_precios(precios)
-    mostrar_tabla(precios_filtrados)
-    mostrar_alertas_precios(precios_filtrados)
-    mostrar_exportaciones(precios_filtrados)
-    mostrar_logs_scraper()
+    vista = st.radio(
+        "Vista principal",
+        [
+            "Resumen",
+            "Comparar",
+            "Evolución",
+            "Productos",
+            "Alertas",
+            "Exportar",
+            "Logs",
+        ],
+        horizontal=True,
+        key="vista_principal",
+        label_visibility="collapsed",
+    )
+    vista = vista or "Resumen"
+
+    if vista == "Resumen":
+        mostrar_salud_sistema(precios, fuente)
+        mostrar_grafico(precios_filtrados)
+    elif vista == "Comparar":
+        mostrar_comparacion_supermercados(precios_filtrados)
+    elif vista == "Evolución":
+        mostrar_evolucion_precios(precios)
+    elif vista == "Productos":
+        mostrar_tabla(precios_filtrados)
+    elif vista == "Alertas":
+        mostrar_alertas_precios(precios_filtrados)
+    elif vista == "Exportar":
+        mostrar_exportaciones(precios_filtrados)
+    elif vista == "Logs":
+        mostrar_logs_scraper()
 
 
 if __name__ == "__main__":
