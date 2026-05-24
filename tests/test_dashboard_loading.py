@@ -3,6 +3,7 @@ import sqlite3
 import dashboard
 from dashboard import (
     PERIODO_CARGA_DEFAULT,
+    cargar_resumen_datos_sqlite,
     cargar_ultimos_precios_sqlite,
     cargar_precios_sqlite,
     obtener_fecha_desde_periodo,
@@ -94,3 +95,35 @@ def test_cargar_ultimos_precios_sqlite_usa_tabla_materializada(monkeypatch, tmp_
     assert actuales.iloc[0]["nombre_producto"] == "Arroz 1kg"
     assert actuales.iloc[0]["precio"] == 7300
     assert actuales.iloc[0]["fecha_registro"] == "2026-05-24"
+
+
+def test_cargar_resumen_datos_sqlite_retorna_metricas_y_tablas(monkeypatch, tmp_path):
+    ruta_db = tmp_path / "precios.db"
+    crear_db_dashboard(ruta_db)
+    monkeypatch.setattr(dashboard, "RUTA_DB", ruta_db)
+    dashboard.preparar_sqlite_para_consultas(ruta_db)
+    dashboard.guardar_corridas_scraper(
+        [
+            {
+                "archivo": "scraper-2026-05-24_09-11-33.log",
+                "fecha": "2026-05-24",
+                "estado": "OK (0)",
+                "ok": True,
+                "scrapeados": 3,
+                "sqlite": 3,
+                "supabase": 3,
+            }
+        ],
+        ruta_db,
+    )
+
+    resumen, por_supermercado, corridas = cargar_resumen_datos_sqlite()
+
+    assert resumen["registros"] == 3
+    assert resumen["productos_actuales"] == 1
+    assert resumen["dias"] == 3
+    assert resumen["primera_fecha"] == "2026-05-01"
+    assert resumen["ultima_fecha"] == "2026-05-24"
+    assert resumen["corridas"] == 1
+    assert por_supermercado.iloc[0]["Productos_actuales"] == 1
+    assert corridas.iloc[0]["Estado"] == "OK (0)"

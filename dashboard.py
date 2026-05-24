@@ -305,6 +305,25 @@ def aplicar_estilos():
                 color: #101828 !important;
             }
 
+            [data-baseweb="tooltip"],
+            [data-baseweb="tooltip"] *,
+            [role="tooltip"],
+            [role="tooltip"] *,
+            [data-testid="stTooltipContent"],
+            [data-testid="stTooltipContent"] * {
+                background-color: #101828 !important;
+                color: #FFFFFF !important;
+                -webkit-text-fill-color: #FFFFFF !important;
+            }
+
+            [data-baseweb="tooltip"],
+            [role="tooltip"],
+            [data-testid="stTooltipContent"] {
+                border: 1px solid rgba(255, 255, 255, 0.18) !important;
+                border-radius: 8px !important;
+                box-shadow: 0 8px 24px rgba(16, 24, 40, 0.22) !important;
+            }
+
             [data-baseweb="option"],
             [data-baseweb="option"] *,
             [role="option"],
@@ -1518,6 +1537,101 @@ def cargar_precios_actuales(periodo=PERIODO_CARGA_DEFAULT):
 
     precios, _ = cargar_precios_con_fuente(periodo)
     return obtener_ultimos_precios(precios)
+
+
+def cargar_resumen_datos_sqlite():
+    """Carga metricas administrativas directas desde SQLite."""
+    resumen = {
+        "registros": 0,
+        "productos_actuales": 0,
+        "dias": 0,
+        "primera_fecha": "",
+        "ultima_fecha": "",
+        "supermercados": 0,
+        "corridas": 0,
+    }
+    por_supermercado = pd.DataFrame()
+    corridas = pd.DataFrame()
+
+    if not RUTA_DB.exists():
+        return resumen, por_supermercado, corridas
+
+    try:
+        preparar_sqlite_para_consultas(RUTA_DB)
+        with sqlite3.connect(RUTA_DB) as conexion:
+            fila = conexion.execute(
+                """
+                SELECT
+                    COUNT(*) AS registros,
+                    COUNT(DISTINCT fecha_registro) AS dias,
+                    MIN(fecha_registro) AS primera_fecha,
+                    MAX(fecha_registro) AS ultima_fecha,
+                    COUNT(DISTINCT supermercado) AS supermercados
+                FROM precios
+                """
+            ).fetchone()
+            actuales = conexion.execute(
+                "SELECT COUNT(*) FROM precios_ultimos"
+            ).fetchone()[0]
+            corridas_total = conexion.execute(
+                "SELECT COUNT(*) FROM corridas_scraper"
+            ).fetchone()[0]
+            por_supermercado = pd.read_sql_query(
+                """
+                SELECT
+                    p.supermercado AS Supermercado,
+                    COUNT(*) AS Registros,
+                    COUNT(DISTINCT p.fecha_registro) AS Dias,
+                    COUNT(DISTINCT p.nombre_producto) AS Productos_historicos,
+                    COALESCE(u.Productos_actuales, 0) AS Productos_actuales,
+                    MAX(p.fecha_registro) AS Ultima_fecha
+                FROM precios p
+                LEFT JOIN (
+                    SELECT supermercado, COUNT(*) AS Productos_actuales
+                    FROM precios_ultimos
+                    GROUP BY supermercado
+                ) u ON u.supermercado = p.supermercado
+                GROUP BY p.supermercado
+                ORDER BY p.supermercado
+                """,
+                conexion,
+            )
+            corridas = pd.read_sql_query(
+                """
+                SELECT
+                    fecha AS Fecha,
+                    archivo AS Archivo,
+                    estado AS Estado,
+                    scrapeados AS Scrapeados,
+                    sqlite_guardados AS SQLite,
+                    supabase_sincronizados AS Supabase,
+                    errores AS Errores,
+                    advertencias AS Advertencias,
+                    inicio AS Inicio,
+                    fin AS Fin
+                FROM corridas_scraper
+                ORDER BY archivo DESC
+                LIMIT 20
+                """,
+                conexion,
+            )
+    except Exception:
+        return resumen, pd.DataFrame(), pd.DataFrame()
+
+    if fila:
+        resumen.update(
+            {
+                "registros": int(fila[0] or 0),
+                "dias": int(fila[1] or 0),
+                "primera_fecha": fila[2] or "",
+                "ultima_fecha": fila[3] or "",
+                "supermercados": int(fila[4] or 0),
+                "productos_actuales": int(actuales or 0),
+                "corridas": int(corridas_total or 0),
+            }
+        )
+
+    return resumen, por_supermercado, corridas
 
 
 def cargar_precios():
@@ -2993,6 +3107,33 @@ def convertir_a_excel(hojas):
     return buffer.getvalue()
 
 
+def mostrar_descarga_bajo_demanda(
+    columna,
+    etiqueta_preparar,
+    etiqueta_descargar,
+    clave,
+    construir_datos,
+    file_name,
+    mime,
+):
+    """Prepara bytes de exportacion solo cuando el usuario lo pide."""
+    if columna.button(etiqueta_preparar, key=f"{clave}_preparar", use_container_width=True):
+        with st.spinner(f"Preparando {etiqueta_descargar}..."):
+            datos = construir_datos()
+        st.session_state[f"{clave}_datos"] = datos
+
+    datos = st.session_state.get(f"{clave}_datos")
+    if datos:
+        columna.download_button(
+            etiqueta_descargar,
+            data=datos,
+            file_name=file_name,
+            mime=mime,
+            key=f"{clave}_descargar",
+            use_container_width=True,
+        )
+
+
 def mostrar_resumen_filtros(precios_filtrados, total_precios, filtros):
     """Muestra un resumen visible de los filtros activos."""
     supermercados, texto_busqueda, rango_precio, rango_fecha = filtros
@@ -3871,62 +4012,72 @@ def mostrar_exportaciones(precios):
         st.info("No hay datos filtrados para exportar.")
         return
 
-    productos = preparar_tabla(precios)
-    comparacion = preparar_comparacion_supermercados(precios)
-    alertas = preparar_tabla_alertas(preparar_alertas_precios(precios))
-    historico = preparar_exportacion_historico(precios)
-    hojas_excel = {
-        "Productos filtrados": productos,
-        "Comparacion": comparacion,
-        "Alertas": alertas,
-        "Historico": historico,
-    }
-
     with st.container(border=True):
         st.caption(
-            "El CSV descarga cada vista por separado. El Excel incluye productos, "
-            "comparación e histórico en hojas distintas."
+            "Primero prepará el archivo que necesitás. Las exportaciones pesadas "
+            "se calculan bajo demanda para no enlentecer la vista."
         )
         columnas = st.columns(5)
-        columnas[0].download_button(
-            "Productos CSV",
-            data=convertir_a_csv(productos),
+        mostrar_descarga_bajo_demanda(
+            columnas[0],
+            "Preparar productos",
+            "Descargar productos",
+            "export_productos_csv",
+            lambda: convertir_a_csv(preparar_tabla(precios)),
             file_name="preciospy_productos_filtrados.csv",
             mime="text/csv",
-            use_container_width=True,
         )
-        columnas[1].download_button(
-            "Comparación CSV",
-            data=convertir_a_csv(comparacion),
+        mostrar_descarga_bajo_demanda(
+            columnas[1],
+            "Preparar comparación",
+            "Descargar comparación",
+            "export_comparacion_csv",
+            lambda: convertir_a_csv(
+                preparar_tabla_comparacion(preparar_comparacion_supermercados(precios))
+            ),
             file_name="preciospy_comparacion_supermercados.csv",
             mime="text/csv",
-            disabled=comparacion.empty,
-            use_container_width=True,
         )
-        columnas[2].download_button(
-            "Alertas CSV",
-            data=convertir_a_csv(alertas),
+        mostrar_descarga_bajo_demanda(
+            columnas[2],
+            "Preparar alertas",
+            "Descargar alertas",
+            "export_alertas_csv",
+            lambda: convertir_a_csv(
+                preparar_tabla_alertas(preparar_alertas_precios(precios))
+            ),
             file_name="preciospy_alertas_precios.csv",
             mime="text/csv",
-            disabled=alertas.empty,
-            use_container_width=True,
         )
-        columnas[3].download_button(
-            "Histórico CSV",
-            data=convertir_a_csv(historico),
+        mostrar_descarga_bajo_demanda(
+            columnas[3],
+            "Preparar histórico",
+            "Descargar histórico",
+            "export_historico_csv",
+            lambda: convertir_a_csv(preparar_exportacion_historico(precios)),
             file_name="preciospy_historico_filtrado.csv",
             mime="text/csv",
-            use_container_width=True,
         )
-        columnas[4].download_button(
-            "Excel completo",
-            data=convertir_a_excel(hojas_excel),
+        mostrar_descarga_bajo_demanda(
+            columnas[4],
+            "Preparar Excel",
+            "Descargar Excel",
+            "export_excel_completo",
+            lambda: convertir_a_excel(
+                {
+                    "Productos filtrados": preparar_tabla(precios),
+                    "Comparacion": preparar_tabla_comparacion(
+                        preparar_comparacion_supermercados(precios)
+                    ),
+                    "Alertas": preparar_tabla_alertas(preparar_alertas_precios(precios)),
+                    "Historico": preparar_exportacion_historico(precios),
+                }
+            ),
             file_name="preciospy_exportacion.xlsx",
             mime=(
                 "application/vnd.openxmlformats-officedocument."
                 "spreadsheetml.sheet"
             ),
-            use_container_width=True,
         )
 
 
@@ -4325,6 +4476,67 @@ def mostrar_tabla(precios):
     )
 
 
+def mostrar_datos_administracion():
+    """Muestra estado administrativo de la base local y corridas persistidas."""
+    mostrar_encabezado_seccion(
+        "Datos",
+        "Revisá cobertura, productos actuales y corridas guardadas en SQLite.",
+        "Administración",
+    )
+
+    if st.button(
+        "Reconstruir estructuras auxiliares",
+        use_container_width=True,
+        help="Actualiza índices, precios_ultimos y tablas operativas sin borrar histórico.",
+    ):
+        preparar_sqlite_para_consultas(RUTA_DB)
+        st.cache_data.clear()
+        st.success("Estructuras auxiliares actualizadas.")
+
+    resumen, por_supermercado, corridas = cargar_resumen_datos_sqlite()
+
+    columnas = st.columns(5)
+    metricas = [
+        ("Registros", f"{resumen['registros']:,}".replace(",", ".")),
+        ("Productos actuales", f"{resumen['productos_actuales']:,}".replace(",", ".")),
+        ("Días", resumen["dias"]),
+        ("Supermercados", resumen["supermercados"]),
+        ("Corridas", resumen["corridas"]),
+    ]
+    for columna, (etiqueta, valor) in zip(columnas, metricas):
+        columna.metric(etiqueta, valor)
+
+    st.caption(
+        f"Rango histórico: {resumen['primera_fecha'] or 'Sin datos'} "
+        f"a {resumen['ultima_fecha'] or 'Sin datos'}."
+    )
+
+    if not por_supermercado.empty:
+        tabla_supermercados = por_supermercado.rename(
+            columns={
+                "Productos_historicos": "Productos históricos",
+                "Productos_actuales": "Productos actuales",
+                "Ultima_fecha": "Última fecha",
+            }
+        )
+        with st.expander("Cobertura por supermercado", expanded=True):
+            st.dataframe(
+                tabla_supermercados,
+                hide_index=True,
+                width="stretch",
+                height=min(320, 86 + len(tabla_supermercados) * 36),
+            )
+
+    if not corridas.empty:
+        with st.expander("Últimas corridas persistidas", expanded=True):
+            st.dataframe(
+                corridas,
+                hide_index=True,
+                width="stretch",
+                height=min(420, 86 + len(corridas) * 36),
+            )
+
+
 def mostrar_dashboard():
     """Renderiza el dashboard completo de PreciosPY."""
     aplicar_estilos()
@@ -4357,6 +4569,7 @@ def mostrar_dashboard():
             "Productos",
             "Alertas",
             "Exportar",
+            "Datos",
             "Logs",
         ],
         horizontal=True,
@@ -4378,6 +4591,8 @@ def mostrar_dashboard():
         mostrar_alertas_precios(precios_filtrados)
     elif vista == "Exportar":
         mostrar_exportaciones(precios_filtrados)
+    elif vista == "Datos":
+        mostrar_datos_administracion()
     elif vista == "Logs":
         mostrar_logs_scraper()
 
