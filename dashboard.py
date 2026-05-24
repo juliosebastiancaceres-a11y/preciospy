@@ -2770,7 +2770,7 @@ def mostrar_filtros(precios):
         st.session_state["filtro_supermercados"] = supermercados
         st.session_state["filtro_busqueda"] = ""
         st.session_state["filtro_precio"] = (precio_minimo, precio_maximo)
-        st.session_state["filtro_periodo_preset"] = "Todo"
+        st.session_state["filtro_periodo_preset"] = "Todo lo cargado"
         if rango_fechas:
             st.session_state["filtro_fechas"] = rango_fechas
 
@@ -2785,7 +2785,9 @@ def mostrar_filtros(precios):
 
     st.session_state.setdefault("filtro_busqueda", "")
     st.session_state.setdefault("filtro_precio", (precio_minimo, precio_maximo))
-    st.session_state.setdefault("filtro_periodo_preset", "Todo")
+    if st.session_state.get("filtro_periodo_preset") == "Todo":
+        st.session_state["filtro_periodo_preset"] = "Todo lo cargado"
+    st.session_state.setdefault("filtro_periodo_preset", "Todo lo cargado")
 
     if rango_fechas:
         st.session_state.setdefault("filtro_fechas", rango_fechas)
@@ -2814,7 +2816,13 @@ def mostrar_filtros(precios):
     if rango_fechas:
         preset_periodo = st.sidebar.radio(
             "Período rápido",
-            ["Todo", "Hoy", "Últimos 7 días", "Mes actual", "Personalizado"],
+            [
+                "Todo lo cargado",
+                "Hoy",
+                "Últimos 7 días",
+                "Mes actual",
+                "Personalizado",
+            ],
             horizontal=False,
             key="filtro_periodo_preset",
         )
@@ -2865,7 +2873,7 @@ def mostrar_selector_carga_historica():
         "Histórico cargado",
         OPCIONES_CARGA_HISTORICA,
         index=OPCIONES_CARGA_HISTORICA.index(PERIODO_CARGA_DEFAULT),
-        key="periodo_carga_historica",
+        key="periodo_carga_historica_v2",
     )
     fecha_maxima = obtener_fecha_maxima_sqlite()
     fecha_desde = obtener_fecha_desde_periodo(periodo, fecha_maxima)
