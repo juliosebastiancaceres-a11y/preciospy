@@ -18,6 +18,7 @@ from scraper import (
     normalizar_nombre_producto,
     obtener_clave_matching_producto,
     obtener_etiqueta_matching_producto,
+    obtener_presentacion_matching_producto,
 )
 import requests
 
@@ -80,6 +81,20 @@ def test_normalizar_nombre_comparable_abreviaturas_comerciales():
 def test_normalizar_nombre_comparable_con_acentos_y_peso():
     assert normalizar_nombre_comparable("Azúcar Orgánica 1 KG") == "azucar organica 1 kg"
     assert normalizar_nombre_comparable("Yerba mate 500 gramos") == "yerba mate 500 g"
+    assert normalizar_nombre_comparable("Yerba mate 1000 gramos") == "yerba mate 1 kg"
+    assert normalizar_nombre_comparable("Queso 0,5 kg") == "queso 500 g"
+
+
+def test_normalizar_nombre_comparable_unifica_presentaciones_equivalentes():
+    assert normalizar_nombre_comparable("Agua mineral 0,5 L") == "agua mineral 500 ml"
+    assert normalizar_nombre_comparable("Agua mineral 500 ml") == "agua mineral 500 ml"
+    assert (
+        obtener_clave_matching_producto("Harina 1000 gr")
+        == obtener_clave_matching_producto("Harina 1 kg")
+    )
+    assert obtener_presentacion_matching_producto("Pack Coca Cola x4 1L") == (
+        "4 unidades + 1 L"
+    )
 
 
 def test_obtener_clave_matching_producto_ignora_relleno_y_orden():

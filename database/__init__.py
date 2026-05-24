@@ -55,6 +55,9 @@ def inicializar_db():
         )
         _agregar_columnas_faltantes(cursor)
         _asegurar_control_de_duplicados(cursor)
+        _crear_indices_consulta(cursor)
+        _actualizar_tabla_ultimos_precios(cursor)
+        _crear_tabla_corridas_scraper(cursor)
         conexion.commit()
 
 
@@ -105,6 +108,257 @@ def _asegurar_control_de_duplicados(cursor):
         END;
         """
     )
+
+
+def _crear_indices_consulta(cursor):
+    """Crea indices usados por dashboard, filtros y reportes historicos."""
+    indices = [
+        (
+            "idx_precios_fecha_registro",
+            "fecha_registro",
+        ),
+        (
+            "idx_precios_supermercado",
+            "supermercado",
+        ),
+        (
+            "idx_precios_nombre_producto",
+            "nombre_producto",
+        ),
+        (
+            "idx_precios_supermercado_fecha",
+            "supermercado, fecha_registro",
+        ),
+    ]
+
+    for nombre, columnas in indices:
+        cursor.execute(
+            f"""
+            CREATE INDEX IF NOT EXISTS {nombre}
+            ON precios ({columnas})
+            """
+        )
+
+
+def _actualizar_tabla_ultimos_precios(cursor):
+    """Materializa el ultimo precio por producto y supermercado."""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS precios_ultimos (
+            supermercado TEXT NOT NULL,
+            nombre_producto TEXT NOT NULL,
+            precio REAL NOT NULL,
+            unidad TEXT,
+            fecha_registro TEXT NOT NULL,
+            categoria TEXT,
+            url_producto TEXT,
+            moneda TEXT DEFAULT 'PYG',
+            fecha_hora_registro TEXT,
+            precio_id INTEGER,
+            PRIMARY KEY (supermercado, nombre_producto)
+        )
+        """
+    )
+    cursor.execute("DELETE FROM precios_ultimos")
+    cursor.execute(
+        """
+        INSERT INTO precios_ultimos (
+            supermercado,
+            nombre_producto,
+            precio,
+            unidad,
+            fecha_registro,
+            categoria,
+            url_producto,
+            moneda,
+            fecha_hora_registro,
+            precio_id
+        )
+        SELECT
+            supermercado,
+            nombre_producto,
+            precio,
+            unidad,
+            fecha_registro,
+            categoria,
+            url_producto,
+            COALESCE(NULLIF(moneda, ''), 'PYG'),
+            fecha_hora_registro,
+            id
+        FROM (
+            SELECT
+                precios.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY supermercado, nombre_producto
+                    ORDER BY
+                        date(fecha_registro) DESC,
+                        CASE
+                            WHEN fecha_hora_registro IS NULL
+                              OR fecha_hora_registro = ''
+                            THEN 1
+                            ELSE 0
+                        END,
+                        datetime(fecha_hora_registro) DESC,
+                        fecha_hora_registro DESC,
+                        id DESC
+                ) AS orden
+            FROM precios
+        )
+        WHERE orden = 1
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_precios_ultimos_supermercado
+        ON precios_ultimos (supermercado)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_precios_ultimos_fecha
+        ON precios_ultimos (fecha_registro)
+        """
+    )
+
+
+def _crear_tabla_corridas_scraper(cursor):
+    """Crea una tabla operativa para consultar corridas sin parsear logs siempre."""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS corridas_scraper (
+            archivo TEXT PRIMARY KEY,
+            fecha TEXT,
+            inicio TEXT,
+            fin TEXT,
+            estado TEXT,
+            ok INTEGER NOT NULL DEFAULT 0,
+            scrapeados INTEGER NOT NULL DEFAULT 0,
+            sqlite_guardados INTEGER NOT NULL DEFAULT 0,
+            supabase_sincronizados INTEGER NOT NULL DEFAULT 0,
+            errores INTEGER NOT NULL DEFAULT 0,
+            advertencias INTEGER NOT NULL DEFAULT 0,
+            ultimo_error TEXT,
+            actualizado_en TEXT NOT NULL
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_corridas_scraper_fecha
+        ON corridas_scraper (fecha)
+        """
+    )
+
+
+def preparar_sqlite_para_consultas(ruta_db=RUTA_DB):
+    """Asegura estructuras auxiliares para consultar una base existente."""
+    ruta = Path(ruta_db)
+
+    if not ruta.exists():
+        return False
+
+    with sqlite3.connect(ruta) as conexion:
+        cursor = conexion.cursor()
+        _agregar_columnas_faltantes(cursor)
+        _asegurar_control_de_duplicados(cursor)
+        _crear_indices_consulta(cursor)
+        _actualizar_tabla_ultimos_precios(cursor)
+        _crear_tabla_corridas_scraper(cursor)
+        conexion.commit()
+
+    return True
+
+
+def guardar_corridas_scraper(registros, ruta_db=RUTA_DB):
+    """Guarda resumenes de logs del scraper para monitoreo historico."""
+    ruta = Path(ruta_db)
+
+    if not ruta.exists():
+        return 0
+
+    filas = []
+    actualizado_en = datetime.now().isoformat(timespec="seconds")
+
+    for registro in registros:
+        archivo = str(registro.get("archivo") or "").strip()
+        if not archivo:
+            continue
+
+        filas.append(
+            {
+                "archivo": archivo,
+                "fecha": registro.get("fecha") or "",
+                "inicio": registro.get("inicio") or "",
+                "fin": registro.get("fin") or "",
+                "estado": registro.get("estado") or "",
+                "ok": 1 if registro.get("ok") else 0,
+                "scrapeados": int(registro.get("scrapeados") or 0),
+                "sqlite_guardados": int(registro.get("sqlite") or 0),
+                "supabase_sincronizados": int(registro.get("supabase") or 0),
+                "errores": int(registro.get("errores") or 0),
+                "advertencias": int(registro.get("advertencias") or 0),
+                "ultimo_error": registro.get("ultimo_error") or "",
+                "actualizado_en": actualizado_en,
+            }
+        )
+
+    if not filas:
+        return 0
+
+    with sqlite3.connect(ruta) as conexion:
+        cursor = conexion.cursor()
+        _crear_tabla_corridas_scraper(cursor)
+        cursor.executemany(
+            """
+            INSERT INTO corridas_scraper (
+                archivo,
+                fecha,
+                inicio,
+                fin,
+                estado,
+                ok,
+                scrapeados,
+                sqlite_guardados,
+                supabase_sincronizados,
+                errores,
+                advertencias,
+                ultimo_error,
+                actualizado_en
+            )
+            VALUES (
+                :archivo,
+                :fecha,
+                :inicio,
+                :fin,
+                :estado,
+                :ok,
+                :scrapeados,
+                :sqlite_guardados,
+                :supabase_sincronizados,
+                :errores,
+                :advertencias,
+                :ultimo_error,
+                :actualizado_en
+            )
+            ON CONFLICT(archivo) DO UPDATE SET
+                fecha = excluded.fecha,
+                inicio = excluded.inicio,
+                fin = excluded.fin,
+                estado = excluded.estado,
+                ok = excluded.ok,
+                scrapeados = excluded.scrapeados,
+                sqlite_guardados = excluded.sqlite_guardados,
+                supabase_sincronizados = excluded.supabase_sincronizados,
+                errores = excluded.errores,
+                advertencias = excluded.advertencias,
+                ultimo_error = excluded.ultimo_error,
+                actualizado_en = excluded.actualizado_en
+            """,
+            filas,
+        )
+        conexion.commit()
+
+    return len(filas)
 
 
 def contar_duplicados_sqlite(ruta_db=RUTA_DB):
@@ -313,8 +567,9 @@ def guardar_productos(productos):
             """,
             productos_limpios,
         )
-        conexion.commit()
         productos_guardados = conexion.total_changes - cambios_antes
+        _actualizar_tabla_ultimos_precios(cursor)
+        conexion.commit()
 
     print(f"Productos guardados en SQLite: {productos_guardados}")
     return productos_guardados

@@ -14,14 +14,24 @@ from scraper import (
     normalizar_nombre_comparable,
     obtener_clave_matching_producto,
     obtener_etiqueta_matching_producto,
+    obtener_presentacion_matching_producto,
 )
 from supabase import create_client
+from database import guardar_corridas_scraper, preparar_sqlite_para_consultas
 
 
 RUTA_DB = Path(__file__).resolve().parent / "data" / "preciospy.db"
 RUTA_ENV = Path(__file__).resolve().parent / ".env"
 RUTA_LOGS = Path(__file__).resolve().parent / "logs"
 TAMANO_LOTE_SUPABASE = 1000
+PERIODO_CARGA_DEFAULT = "Últimos 30 días"
+OPCIONES_CARGA_HISTORICA = [
+    "Últimos 10 días",
+    "Últimos 14 días",
+    "Últimos 30 días",
+    "Últimos 90 días",
+    "Todo el histórico",
+]
 COLUMNAS_PRECIOS = [
     "supermercado",
     "nombre_producto",
@@ -1311,27 +1321,127 @@ def normalizar_precios(precios):
     etiquetas_matching = {
         nombre: obtener_etiqueta_matching_producto(nombre) for nombre in nombres_unicos
     }
+    presentaciones_matching = {
+        nombre: obtener_presentacion_matching_producto(nombre) for nombre in nombres_unicos
+    }
     precios["nombre_normalizado"] = precios["nombre_producto"].map(nombres_normalizados)
     precios["clave_matching"] = precios["nombre_producto"].map(claves_matching)
     precios["etiqueta_matching"] = precios["nombre_producto"].map(etiquetas_matching)
+    precios["presentacion_matching"] = precios["nombre_producto"].map(
+        presentaciones_matching
+    )
     precios["categoria_matching"] = precios["categoria"].map(
         normalizar_categoria_comparable
     )
     return precios.dropna(subset=["precio"])
 
 
-def cargar_precios_sqlite():
-    """Carga todos los registros de precios desde SQLite."""
+def obtener_fecha_maxima_sqlite():
+    """Lee la fecha maxima disponible sin cargar todo el historico."""
+    if not RUTA_DB.exists():
+        return None
+
+    try:
+        with sqlite3.connect(RUTA_DB) as conexion:
+            fila = conexion.execute(
+                "SELECT MAX(fecha_registro) FROM precios"
+            ).fetchone()
+    except Exception:
+        return None
+
+    return fila[0] if fila and fila[0] else None
+
+
+def obtener_fecha_desde_periodo(periodo, fecha_maxima=None):
+    """Convierte un periodo de carga en fecha minima para SQLite."""
+    if periodo == "Todo el histórico":
+        return None
+
+    dias_por_periodo = {
+        "Últimos 10 días": 10,
+        "Últimos 14 días": 14,
+        "Últimos 30 días": 30,
+        "Últimos 90 días": 90,
+    }
+    dias = dias_por_periodo.get(periodo)
+
+    if not dias:
+        return None
+
+    fecha_referencia = pd.to_datetime(fecha_maxima, errors="coerce")
+    if pd.isna(fecha_referencia):
+        fecha_referencia = pd.Timestamp.today().normalize()
+
+    return (fecha_referencia.normalize() - pd.Timedelta(days=dias - 1)).date().isoformat()
+
+
+def cargar_precios_sqlite(periodo=PERIODO_CARGA_DEFAULT):
+    """Carga registros de precios desde SQLite, acotando historico por defecto."""
     if not RUTA_DB.exists():
         return pd.DataFrame(columns=COLUMNAS_PRECIOS)
 
     try:
+        preparar_sqlite_para_consultas(RUTA_DB)
         with sqlite3.connect(RUTA_DB) as conexion:
-            precios = pd.read_sql_query("SELECT * FROM precios", conexion)
+            fecha_desde = obtener_fecha_desde_periodo(
+                periodo,
+                obtener_fecha_maxima_sqlite(),
+            )
+            if fecha_desde:
+                precios = pd.read_sql_query(
+                    """
+                    SELECT *
+                    FROM precios
+                    WHERE fecha_registro >= ?
+                    ORDER BY fecha_registro DESC
+                    """,
+                    conexion,
+                    params=(fecha_desde,),
+                )
+            else:
+                precios = pd.read_sql_query(
+                    """
+                    SELECT *
+                    FROM precios
+                    ORDER BY fecha_registro DESC
+                    """,
+                    conexion,
+                )
     except Exception:
         return pd.DataFrame(columns=COLUMNAS_PRECIOS)
 
     return normalizar_precios(precios)
+
+
+def cargar_ultimos_precios_sqlite():
+    """Carga la tabla materializada de ultimo precio por producto y supermercado."""
+    if not RUTA_DB.exists():
+        return pd.DataFrame(columns=COLUMNAS_PRECIOS)
+
+    try:
+        preparar_sqlite_para_consultas(RUTA_DB)
+        with sqlite3.connect(RUTA_DB) as conexion:
+            actuales = pd.read_sql_query(
+                """
+                SELECT
+                    supermercado,
+                    nombre_producto,
+                    precio,
+                    unidad,
+                    fecha_registro,
+                    categoria,
+                    url_producto,
+                    moneda,
+                    fecha_hora_registro
+                FROM precios_ultimos
+                ORDER BY supermercado, nombre_producto
+                """,
+                conexion,
+            )
+    except Exception:
+        return pd.DataFrame(columns=COLUMNAS_PRECIOS)
+
+    return normalizar_precios(actuales)
 
 
 def obtener_configuracion_secreta(nombre):
@@ -1388,19 +1498,31 @@ def cargar_precios_supabase():
 
 
 @st.cache_data(show_spinner=False, ttl=300)
-def cargar_precios_con_fuente():
+def cargar_precios_con_fuente(periodo=PERIODO_CARGA_DEFAULT):
     """Carga precios y retorna la fuente activa."""
-    precios = cargar_precios_sqlite()
+    precios = cargar_precios_sqlite(periodo)
 
     if not precios.empty:
-        return precios, "SQLite local"
+        return precios, f"SQLite local · {periodo}"
 
     return cargar_precios_supabase(), "Supabase"
 
 
+@st.cache_data(show_spinner=False, ttl=300)
+def cargar_precios_actuales(periodo=PERIODO_CARGA_DEFAULT):
+    """Carga precios actuales desde SQLite o los deriva del historico disponible."""
+    actuales = cargar_ultimos_precios_sqlite()
+
+    if not actuales.empty:
+        return actuales
+
+    precios, _ = cargar_precios_con_fuente(periodo)
+    return obtener_ultimos_precios(precios)
+
+
 def cargar_precios():
     """Carga precios desde la fuente disponible."""
-    precios, _ = cargar_precios_con_fuente()
+    precios, _ = cargar_precios_con_fuente(PERIODO_CARGA_DEFAULT)
     return precios
 
 
@@ -2338,6 +2460,11 @@ def obtener_logs_scraper(limite=5):
                 }
             )
 
+    try:
+        guardar_corridas_scraper(registros, RUTA_DB)
+    except Exception:
+        pass
+
     return registros
 
 
@@ -2405,11 +2532,12 @@ def mostrar_header():
     )
 
 
-def mostrar_metricas(precios):
+def mostrar_metricas(precios, precios_actuales=None):
     """Muestra metricas sin confundir productos con registros historicos."""
     total_registros = len(precios)
+    base_productos = precios_actuales if precios_actuales is not None else precios
     productos_unicos = (
-        precios[["nombre_producto", "supermercado"]].drop_duplicates().shape[0]
+        base_productos[["nombre_producto", "supermercado"]].drop_duplicates().shape[0]
     )
     supermercados = precios["supermercado"].nunique()
     dias_registrados = precios["fecha_registro"].nunique()
@@ -2729,6 +2857,27 @@ def mostrar_filtros(precios):
     return supermercados_seleccionados, texto_busqueda, rango_precio, rango_fecha
 
 
+def mostrar_selector_carga_historica():
+    """Permite elegir cuanto historico cargar antes de leer datos pesados."""
+    st.sidebar.markdown("### Datos")
+    st.sidebar.caption("Por defecto se carga un periodo reciente para abrir más rápido.")
+    periodo = st.sidebar.selectbox(
+        "Histórico cargado",
+        OPCIONES_CARGA_HISTORICA,
+        index=OPCIONES_CARGA_HISTORICA.index(PERIODO_CARGA_DEFAULT),
+        key="periodo_carga_historica",
+    )
+    fecha_maxima = obtener_fecha_maxima_sqlite()
+    fecha_desde = obtener_fecha_desde_periodo(periodo, fecha_maxima)
+
+    if fecha_desde and fecha_maxima:
+        st.sidebar.caption(f"Cargando desde {fecha_desde} hasta {fecha_maxima}.")
+    elif fecha_maxima:
+        st.sidebar.caption(f"Cargando todo el histórico hasta {fecha_maxima}.")
+
+    return periodo
+
+
 def preparar_tabla(precios):
     """Prepara columnas visibles y precio formateado para la tabla."""
     columnas = [
@@ -2906,6 +3055,10 @@ def obtener_ultimos_precios_comparables(precios):
         comparables["etiqueta_matching"] = comparables["nombre_producto"].apply(
             obtener_etiqueta_matching_producto
         )
+    if "presentacion_matching" not in comparables.columns:
+        comparables["presentacion_matching"] = comparables["nombre_producto"].apply(
+            obtener_presentacion_matching_producto
+        )
     if "categoria_matching" not in comparables.columns:
         comparables["categoria_matching"] = comparables["categoria"].apply(
             normalizar_categoria_comparable
@@ -2948,6 +3101,18 @@ def preparar_fila_comparacion(grupo, clave_matching, supermercados, coincidencia
     categoria_comparable = categorias[0] if len(categorias) == 1 else "Varias"
     if not categorias:
         categoria_comparable = "Sin categoria"
+    presentaciones = [
+        presentacion
+        for presentacion in grupo.get("presentacion_matching", pd.Series(dtype=str))
+        .fillna("")
+        .astype(str)
+        .unique()
+        if presentacion
+    ]
+    presentacion_comparable = " + ".join(presentaciones) if presentaciones else "Sin dato"
+    confianza = "Alta"
+    if coincidencia != "Exacta":
+        confianza = "Media" if len(categorias) == 1 and len(presentaciones) == 1 else "Baja"
 
     detalles_productos = []
     detalles_categorias = []
@@ -2967,7 +3132,8 @@ def preparar_fila_comparacion(grupo, clave_matching, supermercados, coincidencia
         "Producto mejor precio": mejor["nombre_producto"],
         "Supermercado más barato": mejor["supermercado"],
         "Coincidencia": coincidencia,
-        "Confianza": "Alta" if coincidencia == "Exacta" else "Media",
+        "Confianza": confianza,
+        "Presentación": presentacion_comparable,
         "Supermercados comparados": grupo["supermercado"].nunique(),
         "Productos comparados": " | ".join(detalles_productos),
         "Categorías comparadas": " | ".join(detalles_categorias),
@@ -3066,6 +3232,7 @@ def preparar_tabla_comparacion(comparacion):
         "Categoría comparable",
         "Coincidencia",
         "Confianza",
+        "Presentación",
         "Supermercados comparados",
         "Supermercado más barato",
         "Producto mejor precio",
@@ -3114,6 +3281,7 @@ def filtrar_comparacion_supermercados(
             "Producto comparable",
             "Producto mejor precio",
             "Supermercado más barato",
+            "Presentación",
             "Productos comparados",
             "Categorías comparadas",
         ]
@@ -3324,6 +3492,7 @@ def obtener_columnas_supermercado_comparacion(comparacion):
         "Supermercado más barato",
         "Coincidencia",
         "Confianza",
+        "Presentación",
         "Supermercados comparados",
         "Productos comparados",
         "Categorías comparadas",
@@ -4152,17 +4321,23 @@ def mostrar_dashboard():
     """Renderiza el dashboard completo de PreciosPY."""
     aplicar_estilos()
     mostrar_header()
+    periodo_carga = mostrar_selector_carga_historica()
 
-    precios, fuente = cargar_precios_con_fuente()
+    precios, fuente = cargar_precios_con_fuente(periodo_carga)
+    precios_actuales = cargar_precios_actuales(periodo_carga)
 
     if precios.empty:
         st.info("Todavía no hay productos guardados en la base de datos.")
         return
 
-    mostrar_metricas(precios)
+    if precios_actuales.empty:
+        precios_actuales = obtener_ultimos_precios(precios)
+
+    mostrar_metricas(precios, precios_actuales)
     mostrar_barra_estado(precios, fuente)
     filtros = mostrar_filtros(precios)
     precios_filtrados = filtrar_precios(precios, *filtros)
+    precios_actuales_filtrados = filtrar_precios(precios_actuales, *filtros)
     mostrar_resumen_filtros(precios_filtrados, len(precios), filtros)
 
     vista = st.radio(
@@ -4184,13 +4359,13 @@ def mostrar_dashboard():
 
     if vista == "Resumen":
         mostrar_salud_sistema(precios, fuente)
-        mostrar_grafico(precios_filtrados)
+        mostrar_grafico(precios_actuales_filtrados)
     elif vista == "Comparar":
-        mostrar_comparacion_supermercados(precios_filtrados)
+        mostrar_comparacion_supermercados(precios_actuales_filtrados)
     elif vista == "Evolución":
         mostrar_evolucion_precios(precios)
     elif vista == "Productos":
-        mostrar_tabla(precios_filtrados)
+        mostrar_tabla(precios_actuales_filtrados)
     elif vista == "Alertas":
         mostrar_alertas_precios(precios_filtrados)
     elif vista == "Exportar":

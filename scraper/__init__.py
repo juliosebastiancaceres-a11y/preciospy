@@ -426,6 +426,11 @@ def _extraer_tokens_matching(nombre):
             indice += 2
             continue
 
+        if _parsear_numero(token) is not None and siguiente == "unidades":
+            unidades.append(f"{token} unidades")
+            indice += 2
+            continue
+
         if token not in palabras_omitidas:
             tokens_producto.append(token)
 
@@ -465,7 +470,12 @@ def normalizar_nombre_comparable(nombre):
         numero = _parsear_numero(token)
 
         if numero is not None and siguiente in unidades_litro:
-            tokens_normalizados.extend([_formatear_numero_unidad(numero), "L"])
+            if numero < 1:
+                tokens_normalizados.extend(
+                    [_formatear_numero_unidad(numero * 1000), "ml"]
+                )
+            else:
+                tokens_normalizados.extend([_formatear_numero_unidad(numero), "L"])
             indice += 2
             continue
 
@@ -484,12 +494,20 @@ def normalizar_nombre_comparable(nombre):
             continue
 
         if numero is not None and siguiente in unidades_gramo:
-            tokens_normalizados.extend([_formatear_numero_unidad(numero), "g"])
+            if numero >= 1000:
+                tokens_normalizados.extend([_formatear_numero_unidad(numero / 1000), "kg"])
+            else:
+                tokens_normalizados.extend([_formatear_numero_unidad(numero), "g"])
             indice += 2
             continue
 
         if numero is not None and siguiente in unidades_kilo:
-            tokens_normalizados.extend([_formatear_numero_unidad(numero), "kg"])
+            if numero < 1:
+                tokens_normalizados.extend(
+                    [_formatear_numero_unidad(numero * 1000), "g"]
+                )
+            else:
+                tokens_normalizados.extend([_formatear_numero_unidad(numero), "kg"])
             indice += 2
             continue
 
@@ -521,6 +539,12 @@ def obtener_etiqueta_matching_producto(nombre):
         return ""
 
     return " ".join(tokens_unicos + unidades_unicas)
+
+
+def obtener_presentacion_matching_producto(nombre):
+    """Extrae cantidad/peso/volumen normalizados para auditar comparaciones."""
+    _, unidades_unicas = _extraer_tokens_matching(nombre)
+    return " + ".join(unidades_unicas)
 
 
 def fecha_registro_actual():
