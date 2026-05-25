@@ -3501,6 +3501,53 @@ def preparar_resumen_categorias_comparacion(comparacion):
     ]
 
 
+PALABRAS_RIESGO_MATCHING = [
+    "envase",
+    "vacio",
+    "vacío",
+    "repuesto",
+    "recarga",
+    "retornable",
+    "pack",
+    "multipack",
+    "combo",
+    "bidon",
+    "bidón",
+    "sin azucar",
+    "sin azúcar",
+    "zero",
+    "light",
+    "unidades",
+]
+
+
+def detectar_senales_riesgo_matching(fila):
+    """Detecta señales que ameritan revisar una comparacion manualmente."""
+    textos = [
+        fila.get("Producto comparable", ""),
+        fila.get("Producto mejor precio", ""),
+        fila.get("Presentación", ""),
+        fila.get("Productos comparados", ""),
+        fila.get("Categorías comparadas", ""),
+    ]
+    texto_original = " ".join(str(valor) for valor in textos).lower()
+    texto = normalizar_nombre_comparable(texto_original)
+    senales = {}
+    for palabra in PALABRAS_RIESGO_MATCHING:
+        palabra_normalizada = normalizar_nombre_comparable(palabra)
+        if not palabra_normalizada:
+            continue
+        if palabra in {"light", "zero"}:
+            encontrada = palabra in texto_original
+        else:
+            encontrada = palabra.lower() in texto_original or palabra_normalizada in texto
+
+        if encontrada:
+            senales.setdefault(palabra_normalizada, palabra)
+
+    return sorted(senales.values())
+
+
 def obtener_supermercado_mayor_precio(fila, columnas_supermercado):
     """Obtiene el supermercado con mayor precio en una fila de comparacion."""
     precios_supermercado = {
@@ -3514,6 +3561,22 @@ def obtener_supermercado_mayor_precio(fila, columnas_supermercado):
 
     supermercado = max(precios_supermercado, key=precios_supermercado.get)
     return supermercado, precios_supermercado[supermercado]
+
+
+def obtener_precio_segundo_mas_barato(fila, columnas_supermercado):
+    """Obtiene el segundo precio disponible de una comparacion."""
+    precios = sorted(
+        [
+            fila[supermercado]
+            for supermercado in columnas_supermercado
+            if supermercado in fila and not pd.isna(fila[supermercado])
+        ]
+    )
+
+    if len(precios) < 2:
+        return None
+
+    return precios[1]
 
 
 def preparar_mejores_compras(
@@ -3646,11 +3709,17 @@ def preparar_ranking_supermercados(comparacion):
         ).sum()
         peores = 0
         ahorro_vs_mejor = 0
+        ahorro_vs_segundo = 0
+        victorias_con_segundo = 0
         precio_relativo = []
 
         for _, fila in datos_super.iterrows():
             precio_super = fila[supermercado]
             mejor_precio = fila["Mejor precio"]
+            segundo_precio = obtener_precio_segundo_mas_barato(
+                fila,
+                columnas_supermercado,
+            )
             supermercado_caro, _ = obtener_supermercado_mayor_precio(
                 fila,
                 columnas_supermercado,
@@ -3658,6 +3727,13 @@ def preparar_ranking_supermercados(comparacion):
 
             if supermercado_caro == supermercado:
                 peores += 1
+            if (
+                fila["Supermercado más barato"] == supermercado
+                and segundo_precio is not None
+                and segundo_precio > mejor_precio
+            ):
+                ahorro_vs_segundo += segundo_precio - mejor_precio
+                victorias_con_segundo += 1
             if precio_super > mejor_precio:
                 ahorro_vs_mejor += precio_super - mejor_precio
             if mejor_precio:
@@ -3670,6 +3746,12 @@ def preparar_ranking_supermercados(comparacion):
                 "Mejores precios": int(victorias),
                 "Peores precios": int(peores),
                 "Ahorro vs mejor": ahorro_vs_mejor,
+                "Ahorro frente al segundo": ahorro_vs_segundo,
+                "Ahorro promedio al segundo": (
+                    ahorro_vs_segundo / victorias_con_segundo
+                    if victorias_con_segundo
+                    else 0
+                ),
                 "Precio relativo promedio %": (
                     sum(precio_relativo) / len(precio_relativo)
                     if precio_relativo
@@ -3686,7 +3768,107 @@ def preparar_ranking_supermercados(comparacion):
         ranking["Mejores precios"] / ranking["Productos comparables"] * 100
     )
     return ranking.sort_values(
-        ["Mejores precios", "Tasa de victoria %", "Precio relativo promedio %"],
+        [
+            "Mejores precios",
+            "Tasa de victoria %",
+            "Ahorro promedio al segundo",
+            "Precio relativo promedio %",
+        ],
+        ascending=[False, False, False, True],
+    ).reset_index(drop=True)
+
+
+def preparar_ranking_supermercados_por_categoria(comparacion):
+    """Rankea supermercados dentro de cada categoria comparable."""
+    if comparacion.empty or "Categoría comparable" not in comparacion.columns:
+        return pd.DataFrame()
+
+    filas = []
+    for categoria, grupo in comparacion.groupby("Categoría comparable", dropna=False):
+        ranking = preparar_ranking_supermercados(grupo)
+        if ranking.empty:
+            continue
+
+        ranking = ranking.copy()
+        ranking.insert(0, "Categoría comparable", categoria or "Sin categoria")
+        filas.append(ranking)
+
+    if not filas:
+        return pd.DataFrame()
+
+    return pd.concat(filas, ignore_index=True).sort_values(
+        [
+            "Categoría comparable",
+            "Mejores precios",
+            "Tasa de victoria %",
+            "Ahorro promedio al segundo",
+        ],
+        ascending=[True, False, False, False],
+    )
+
+
+def preparar_matches_sospechosos(
+    comparacion,
+    ahorro_porcentaje_alto=35,
+    diferencia_minima=10000,
+):
+    """Prepara comparaciones que conviene revisar manualmente."""
+    if comparacion.empty:
+        return pd.DataFrame()
+
+    filas = []
+    for _, fila in comparacion.iterrows():
+        senales = detectar_senales_riesgo_matching(fila)
+        motivos = []
+        puntaje = 0
+
+        if fila.get("Confianza") == "Baja":
+            motivos.append("Confianza baja")
+            puntaje += 3
+        if fila.get("Ahorro %", 0) >= ahorro_porcentaje_alto:
+            motivos.append("Ahorro % alto")
+            puntaje += 1
+        if fila.get("Diferencia", 0) >= diferencia_minima:
+            motivos.append("Diferencia alta")
+            puntaje += 1
+        if fila.get("Supermercados comparados", 0) <= 2:
+            motivos.append("Pocos supermercados")
+            puntaje += 1
+        if fila.get("Categoría comparable") in {"Varias", "Sin categoria", ""}:
+            motivos.append("Categoria debil")
+            puntaje += 1
+        if senales:
+            motivos.append("Palabras sensibles")
+            puntaje += 2
+
+        if puntaje < 3:
+            continue
+
+        filas.append(
+            {
+                "Producto comparable": fila.get("Producto comparable", ""),
+                "Categoría comparable": fila.get("Categoría comparable", ""),
+                "Motivos": " | ".join(motivos),
+                "Señales": ", ".join(senales),
+                "Confianza": fila.get("Confianza", ""),
+                "Coincidencia": fila.get("Coincidencia", ""),
+                "Supermercados comparados": fila.get("Supermercados comparados", 0),
+                "Supermercado más barato": fila.get("Supermercado más barato", ""),
+                "Mejor precio": fila.get("Mejor precio", 0),
+                "Diferencia": fila.get("Diferencia", 0),
+                "Ahorro %": fila.get("Ahorro %", 0),
+                "Producto mejor precio": fila.get("Producto mejor precio", ""),
+                "Productos comparados": fila.get("Productos comparados", ""),
+                "Categorías comparadas": fila.get("Categorías comparadas", ""),
+            }
+        )
+
+    if not filas:
+        return pd.DataFrame()
+
+    sospechosos = pd.DataFrame(filas)
+    return sospechosos.sort_values(
+        ["Ahorro %", "Diferencia", "Producto comparable"],
         ascending=[False, False, True],
     ).reset_index(drop=True)
 
@@ -3741,7 +3923,13 @@ def preparar_tabla_ranking_supermercados(ranking):
         return ranking.copy()
 
     tabla = ranking.copy()
-    tabla["Ahorro vs mejor"] = tabla["Ahorro vs mejor"].map(formatear_guaranies)
+    for columna in [
+        "Ahorro vs mejor",
+        "Ahorro frente al segundo",
+        "Ahorro promedio al segundo",
+    ]:
+        if columna in tabla.columns:
+            tabla[columna] = tabla[columna].map(formatear_guaranies)
     tabla["Precio relativo promedio %"] = tabla[
         "Precio relativo promedio %"
     ].map(lambda valor: f"{valor:+.1f}%")
@@ -3749,6 +3937,48 @@ def preparar_tabla_ranking_supermercados(ranking):
         lambda valor: f"{valor:.1f}%"
     )
     return tabla.fillna("")
+
+
+def preparar_tabla_matches_sospechosos(sospechosos):
+    """Formatea auditoria interna de matches sospechosos."""
+    if sospechosos.empty:
+        return sospechosos.copy()
+
+    tabla = sospechosos.copy()
+    for columna in ["Mejor precio", "Diferencia"]:
+        if columna in tabla.columns:
+            tabla[columna] = tabla[columna].map(formatear_guaranies)
+    if "Ahorro %" in tabla.columns:
+        tabla["Ahorro %"] = tabla["Ahorro %"].map(lambda valor: f"{valor:.1f}%")
+    return tabla.fillna("")
+
+
+def preparar_exportacion_mejores_compras(precios):
+    """Prepara mejores compras desde los precios filtrados."""
+    comparacion = preparar_comparacion_supermercados(precios)
+    return preparar_tabla_mejores_compras(preparar_mejores_compras(comparacion))
+
+
+def preparar_exportacion_resumen_oportunidades(precios):
+    """Prepara resumen por categoria desde precios filtrados."""
+    comparacion = preparar_comparacion_supermercados(precios)
+    return preparar_tabla_resumen_categorias(preparar_resumen_categorias(comparacion))
+
+
+def preparar_exportacion_ranking_oportunidades(precios):
+    """Prepara ranking general desde precios filtrados."""
+    comparacion = preparar_comparacion_supermercados(precios)
+    return preparar_tabla_ranking_supermercados(
+        preparar_ranking_supermercados(comparacion)
+    )
+
+
+def preparar_exportacion_ranking_categoria_oportunidades(precios):
+    """Prepara ranking por categoria desde precios filtrados."""
+    comparacion = preparar_comparacion_supermercados(precios)
+    return preparar_tabla_ranking_supermercados(
+        preparar_ranking_supermercados_por_categoria(comparacion)
+    )
 
 
 def preparar_alertas_precios(precios, umbral_porcentaje=5):
@@ -4355,6 +4585,9 @@ def mostrar_oportunidades_decision(precios):
 
     resumen_categorias = preparar_resumen_categorias(comparacion_filtrada)
     ranking = preparar_ranking_supermercados(comparacion_filtrada)
+    ranking_categoria = preparar_ranking_supermercados_por_categoria(
+        comparacion_filtrada
+    )
 
     categoria_lider = (
         resumen_categorias.iloc[0]["Categoría comparable"]
@@ -4390,7 +4623,9 @@ def mostrar_oportunidades_decision(precios):
         )
 
 
-    pestanas = st.tabs(["Mejores compras", "Categorías", "Ranking"])
+    pestanas = st.tabs(
+        ["Mejores compras", "Categorías", "Ranking", "Ranking por categoría"]
+    )
 
     with pestanas[0]:
         st.dataframe(
@@ -4420,6 +4655,17 @@ def mostrar_oportunidades_decision(precios):
                 hide_index=True,
                 width="stretch",
                 height=360,
+            )
+
+    with pestanas[3]:
+        if ranking_categoria.empty:
+            st.info("No hay ranking por categoría disponible con estos filtros.")
+        else:
+            st.dataframe(
+                preparar_tabla_ranking_supermercados(ranking_categoria),
+                hide_index=True,
+                width="stretch",
+                height=430,
             )
 
 
@@ -4492,6 +4738,14 @@ def mostrar_exportaciones(precios):
                     "Comparacion": preparar_tabla_comparacion(
                         preparar_comparacion_supermercados(precios)
                     ),
+                    "Mejores compras": preparar_exportacion_mejores_compras(precios),
+                    "Categorias oportunidad": preparar_exportacion_resumen_oportunidades(
+                        precios
+                    ),
+                    "Ranking": preparar_exportacion_ranking_oportunidades(precios),
+                    "Ranking categorias": preparar_exportacion_ranking_categoria_oportunidades(
+                        precios
+                    ),
                     "Alertas": preparar_tabla_alertas(preparar_alertas_precios(precios)),
                     "Historico": preparar_exportacion_historico(precios),
                 }
@@ -4501,6 +4755,53 @@ def mostrar_exportaciones(precios):
                 "application/vnd.openxmlformats-officedocument."
                 "spreadsheetml.sheet"
             ),
+        )
+
+    with st.container(border=True):
+        st.caption(
+            "Exportaciones enfocadas en oportunidades. Usan el mismo matching que la vista "
+            "Oportunidades y se calculan solo cuando se preparan."
+        )
+        columnas_oportunidades = st.columns(4)
+        mostrar_descarga_bajo_demanda(
+            columnas_oportunidades[0],
+            "Preparar compras",
+            "Descargar compras",
+            "export_mejores_compras_csv",
+            lambda: convertir_a_csv(preparar_exportacion_mejores_compras(precios)),
+            file_name="preciospy_mejores_compras.csv",
+            mime="text/csv",
+        )
+        mostrar_descarga_bajo_demanda(
+            columnas_oportunidades[1],
+            "Preparar categorías",
+            "Descargar categorías",
+            "export_oportunidades_categorias_csv",
+            lambda: convertir_a_csv(
+                preparar_exportacion_resumen_oportunidades(precios)
+            ),
+            file_name="preciospy_oportunidades_categorias.csv",
+            mime="text/csv",
+        )
+        mostrar_descarga_bajo_demanda(
+            columnas_oportunidades[2],
+            "Preparar ranking",
+            "Descargar ranking",
+            "export_ranking_oportunidades_csv",
+            lambda: convertir_a_csv(preparar_exportacion_ranking_oportunidades(precios)),
+            file_name="preciospy_ranking_supermercados.csv",
+            mime="text/csv",
+        )
+        mostrar_descarga_bajo_demanda(
+            columnas_oportunidades[3],
+            "Preparar ranking rubros",
+            "Descargar ranking rubros",
+            "export_ranking_categorias_csv",
+            lambda: convertir_a_csv(
+                preparar_exportacion_ranking_categoria_oportunidades(precios)
+            ),
+            file_name="preciospy_ranking_supermercados_por_categoria.csv",
+            mime="text/csv",
         )
 
 
@@ -4899,7 +5200,107 @@ def mostrar_tabla(precios):
     )
 
 
-def mostrar_datos_administracion():
+def obtener_token_admin_configurado():
+    """Lee token admin opcional desde entorno o secrets."""
+    token = os.getenv("PRECIOSPY_ADMIN_TOKEN", "").strip()
+    if token:
+        return token
+
+    try:
+        return str(st.secrets.get("PRECIOSPY_ADMIN_TOKEN", "")).strip()
+    except Exception:
+        return ""
+
+
+def usuario_admin_autorizado():
+    """Valida acceso a herramientas internas cuando hay token configurado."""
+    token = obtener_token_admin_configurado()
+    if not token:
+        return True
+
+    ingresado = st.sidebar.text_input(
+        "Clave admin",
+        type="password",
+        key="clave_admin_matching",
+        help="Necesaria para ver auditorías internas del matching.",
+    )
+    return ingresado == token
+
+
+def mostrar_auditoria_matching_admin(precios_actuales):
+    """Muestra auditoria interna de matches sospechosos."""
+    if precios_actuales is None or precios_actuales.empty:
+        return
+
+    with st.expander("Auditoría interna de matching", expanded=False):
+        st.caption(
+            "Vista solo para administradores. Sirve para encontrar comparaciones "
+            "que conviene revisar y convertir en nuevas reglas/tests."
+        )
+
+        if not usuario_admin_autorizado():
+            st.warning("Ingresá la clave admin para ver esta auditoría.")
+            return
+
+        calcular = st.button(
+            "Calcular matches sospechosos",
+            key="calcular_matches_sospechosos_admin",
+            use_container_width=True,
+            help="Analiza productos actuales comparables y marca casos con señales de riesgo.",
+        )
+
+        if not calcular:
+            return
+
+        with st.spinner("Auditando matches sospechosos..."):
+            comparacion = preparar_comparacion_supermercados(precios_actuales)
+            sospechosos = preparar_matches_sospechosos(comparacion)
+
+        if comparacion.empty:
+            st.info("No hay comparaciones suficientes para auditar.")
+            return
+
+        columnas = st.columns(4)
+        columnas[0].metric("Comparaciones", len(comparacion))
+        columnas[1].metric("Sospechosas", len(sospechosos))
+        columnas[2].metric(
+            "Confianza baja",
+            (
+                (sospechosos["Confianza"] == "Baja").sum()
+                if not sospechosos.empty
+                else 0
+            ),
+        )
+        columnas[3].metric(
+            "Mayor ahorro marcado",
+            (
+                f"{sospechosos['Ahorro %'].max():.1f}%"
+                if not sospechosos.empty
+                else "0.0%"
+            ),
+        )
+
+        if sospechosos.empty:
+            st.success("No se detectaron matches sospechosos con los umbrales actuales.")
+            return
+
+        tabla = preparar_tabla_matches_sospechosos(sospechosos.head(120))
+        st.dataframe(
+            tabla,
+            hide_index=True,
+            width="stretch",
+            height=460,
+        )
+        st.download_button(
+            "Descargar auditoría CSV",
+            data=convertir_a_csv(preparar_tabla_matches_sospechosos(sospechosos)),
+            file_name="preciospy_matches_sospechosos.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+
+def mostrar_datos_administracion(precios_actuales=None):
     """Muestra estado administrativo de la base local y corridas persistidas."""
     mostrar_encabezado_seccion(
         "Datos",
@@ -4958,6 +5359,8 @@ def mostrar_datos_administracion():
                 width="stretch",
                 height=min(420, 86 + len(corridas) * 36),
             )
+
+    mostrar_auditoria_matching_admin(precios_actuales)
 
 
 def mostrar_dashboard():
@@ -5018,7 +5421,7 @@ def mostrar_dashboard():
     elif vista == "Exportar":
         mostrar_exportaciones(precios_filtrados)
     elif vista == "Datos":
-        mostrar_datos_administracion()
+        mostrar_datos_administracion(precios_actuales)
     elif vista == "Logs":
         mostrar_logs_scraper()
 

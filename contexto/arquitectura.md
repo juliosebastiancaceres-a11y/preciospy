@@ -41,7 +41,9 @@ Matching:
 - La vista `Oportunidades` reutiliza la comparacion para preparar:
   - mejores compras,
   - resumen por categoria,
-  - ranking de supermercados.
+  - ranking general de supermercados,
+  - ranking de supermercados por categoria.
+- La vista `Datos` incluye una auditoria interna de matches sospechosos.
 - Colores de graficos:
   - Biggie rojo,
   - Los Jardines amarillo,

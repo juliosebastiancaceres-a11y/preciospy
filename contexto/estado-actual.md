@@ -67,10 +67,12 @@ Rendimiento del dashboard:
 - Ya existen indices SQLite para `fecha_registro`, `supermercado`, `nombre_producto` y `(supermercado, fecha_registro)`.
 - Ya existe tabla materializada local `precios_ultimos` para ultimo precio por producto/supermercado.
 - Ya hay exportacion bajo demanda para evitar preparar archivos pesados al cargar.
-- Ya existe vista `Oportunidades` para mejores compras, resumen por categoria y ranking de supermercados.
+- Ya existe vista `Oportunidades` para mejores compras, resumen por categoria, ranking general y ranking por categoria.
+- Ya existen exportaciones especificas de oportunidades.
+- Ya existe auditoria interna de matches sospechosos en `Datos`.
 - Matching ajustado con caso real `DESCARTABLE 2LTS` sin mezclar variantes `retornable`.
 
 Verificacion tecnica:
 
-- Suite completa ejecutada el 2026-05-25: `108 passed`.
+- Suite completa ejecutada el 2026-05-25: `110 passed`.
 - Dashboard levantado para prueba local en `http://127.0.0.1:8599`.

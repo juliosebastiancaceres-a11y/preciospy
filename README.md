@@ -206,9 +206,10 @@ del codigo y el dashboard los lee desde `st.secrets`.
 - Grafico de evolucion de precios por producto y supermercado.
 - Evolucion historica por producto equivalente usando matching.
 - Comparacion de productos equivalentes entre supermercados.
-- Vista de oportunidades con mejores compras, resumen por categoria y ranking de supermercados.
+- Vista de oportunidades con mejores compras, resumen por categoria, ranking general y ranking por categoria.
+- Auditoria interna de matches sospechosos para revisar casos de riesgo antes de convertirlos en reglas.
 - Alertas de cambios de precio y minimos historicos.
-- Exportacion CSV/Excel de productos, comparaciones, alertas e historico.
+- Exportacion CSV/Excel de productos, oportunidades, comparaciones, alertas e historico.
 - Vista de salud y logs recientes del scraper.
 - Tabla de productos filtrados con precio formateado en guaranies.
 - SQLite con proteccion contra duplicados por supermercado, producto y fecha.

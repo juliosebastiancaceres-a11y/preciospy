@@ -8,9 +8,12 @@ from dashboard import preparar_resumen_categorias_comparacion
 from dashboard import preparar_mejores_compras
 from dashboard import preparar_resumen_categorias
 from dashboard import preparar_ranking_supermercados
+from dashboard import preparar_ranking_supermercados_por_categoria
+from dashboard import preparar_matches_sospechosos
 from dashboard import preparar_tabla_mejores_compras
 from dashboard import preparar_tabla_resumen_categorias
 from dashboard import preparar_tabla_ranking_supermercados
+from dashboard import preparar_tabla_matches_sospechosos
 
 
 def test_preparar_comparacion_supermercados_detecta_equivalentes():
@@ -562,6 +565,8 @@ def test_preparar_ranking_supermercados_mide_victorias_y_sobrecosto():
     assert stock["Mejores precios"] == 1
     assert stock["Peores precios"] == 1
     assert stock["Ahorro vs mejor"] == 1000
+    assert stock["Ahorro frente al segundo"] == 1000
+    assert stock["Ahorro promedio al segundo"] == 1000
 
     arete = ranking[ranking["Supermercado"] == "Areté"].iloc[0]
     assert arete["Productos comparables"] == 1
@@ -570,4 +575,105 @@ def test_preparar_ranking_supermercados_mide_victorias_y_sobrecosto():
     tabla = preparar_tabla_ranking_supermercados(ranking)
     stock_tabla = tabla[tabla["Supermercado"] == "Stock"].iloc[0]
     assert stock_tabla["Ahorro vs mejor"] == "₲ 1.000"
+    assert stock_tabla["Ahorro frente al segundo"] == "₲ 1.000"
+    assert stock_tabla["Ahorro promedio al segundo"] == "₲ 1.000"
     assert stock_tabla["Tasa de victoria %"] == "50.0%"
+
+
+def test_preparar_ranking_supermercados_por_categoria_separa_rubros():
+    comparacion = pd.DataFrame(
+        [
+            {
+                "Producto comparable": "coca cola 2 L",
+                "Categoría comparable": "Bebidas",
+                "Supermercado más barato": "Stock",
+                "Supermercados comparados": 2,
+                "Mejor precio": 11000,
+                "Diferencia": 1000,
+                "Ahorro %": 8.3,
+                "Stock": 11000,
+                "Superseis": 12000,
+            },
+            {
+                "Producto comparable": "detergente 500 ml",
+                "Categoría comparable": "Limpieza",
+                "Supermercado más barato": "Superseis",
+                "Supermercados comparados": 2,
+                "Mejor precio": 8000,
+                "Diferencia": 1000,
+                "Ahorro %": 11.1,
+                "Stock": 9000,
+                "Superseis": 8000,
+            },
+        ]
+    )
+
+    ranking = preparar_ranking_supermercados_por_categoria(comparacion)
+
+    bebidas_stock = ranking[
+        (ranking["Categoría comparable"] == "Bebidas")
+        & (ranking["Supermercado"] == "Stock")
+    ].iloc[0]
+    limpieza_superseis = ranking[
+        (ranking["Categoría comparable"] == "Limpieza")
+        & (ranking["Supermercado"] == "Superseis")
+    ].iloc[0]
+
+    assert bebidas_stock["Mejores precios"] == 1
+    assert limpieza_superseis["Mejores precios"] == 1
+
+
+def test_preparar_matches_sospechosos_detecta_riesgo_operativo():
+    comparacion = pd.DataFrame(
+        [
+            {
+                "Producto comparable": "envase retornable coca cola 1.5 L",
+                "Categoría comparable": "Bebidas",
+                "Producto mejor precio": "ENVASE RETORNABLE COCA COLA 1 1/2 LT",
+                "Supermercado más barato": "Los Jardines",
+                "Coincidencia": "Flexible",
+                "Confianza": "Baja",
+                "Presentación": "1.5 L",
+                "Supermercados comparados": 2,
+                "Productos comparados": (
+                    "Los Jardines: ENVASE RETORNABLE COCA COLA 1 1/2 LT "
+                    "(₲ 5.500) | Stock: GASEOSA COCA COLA 1.5L (₲ 12.000)"
+                ),
+                "Categorías comparadas": "Los Jardines: Bebidas | Stock: Bebidas",
+                "Mejor precio": 5500,
+                "Diferencia": 6500,
+                "Ahorro %": 54.1,
+            },
+            {
+                "Producto comparable": "arroz 1 kg",
+                "Categoría comparable": "Almacen",
+                "Producto mejor precio": "Arroz 1kg",
+                "Supermercado más barato": "Stock",
+                "Coincidencia": "Exacta",
+                "Confianza": "Alta",
+                "Presentación": "1 kg",
+                "Supermercados comparados": 4,
+                "Productos comparados": "Stock: Arroz 1kg | Biggie: Arroz 1kg",
+                "Categorías comparadas": "Stock: Almacen | Biggie: Almacen",
+                "Mejor precio": 7000,
+                "Diferencia": 300,
+                "Ahorro %": 4.1,
+            },
+        ]
+    )
+
+    sospechosos = preparar_matches_sospechosos(comparacion)
+
+    assert list(sospechosos["Producto comparable"]) == [
+        "envase retornable coca cola 1.5 L"
+    ]
+    fila = sospechosos.iloc[0]
+    assert "Confianza baja" in fila["Motivos"]
+    assert "Palabras sensibles" in fila["Motivos"]
+    assert "envase" in fila["Señales"]
+    assert "retornable" in fila["Señales"]
+
+    tabla = preparar_tabla_matches_sospechosos(sospechosos)
+    assert tabla.iloc[0]["Mejor precio"] == "₲ 5.500"
+    assert tabla.iloc[0]["Diferencia"] == "₲ 6.500"
+    assert tabla.iloc[0]["Ahorro %"] == "54.1%"

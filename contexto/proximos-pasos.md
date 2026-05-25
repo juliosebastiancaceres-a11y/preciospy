@@ -13,9 +13,11 @@ Trabajo ya implementado:
   - `(supermercado, fecha_registro)`
 - Tabla materializada `precios_ultimos`.
 - Exportaciones preparadas bajo demanda.
-- Vista `Oportunidades` con mejores compras, resumen por categoria y ranking de supermercados.
+- Vista `Oportunidades` con mejores compras, resumen por categoria, ranking general y ranking por categoria.
+- Exportaciones especificas de oportunidades: mejores compras, categorias, ranking y ranking por categoria.
+- Auditoria interna de matches sospechosos en `Datos`.
 - Matching ajustado para comparar productos `descartable` contra nombres genericos sin mezclar `retornable`.
-- Tests completos pasando: `108 passed`.
+- Tests completos pasando: `110 passed`.
 
 Siguiente paso recomendado:
 
@@ -26,7 +28,7 @@ Siguiente paso recomendado:
    - Revisar oportunidades, comparacion, alertas, tabla de datos, exportacion y monitoreo.
    - Confirmar que la experiencia real de carga sea aceptable con mas de 400k registros.
 
-2. Seguir mejorando calidad del matching con casos reales.
+2. Seguir mejorando calidad del matching con casos reales desde la auditoria interna.
    - Buscar productos que deberian coincidir y no coinciden.
    - Buscar productos que coinciden pero no deberian.
    - Agregar pruebas por cada caso real antes de ajustar reglas.
