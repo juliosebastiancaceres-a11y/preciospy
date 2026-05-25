@@ -296,6 +296,48 @@ def _formatear_numero_unidad(numero):
     return f"{numero:g}"
 
 
+def _normalizar_fracciones_medida(texto):
+    """Convierte fracciones de unidad como 1 1/2 LT o 1/2 kg a decimal."""
+    unidades = (
+        r"l|lt|lts|lit|litr|litro|litros|ml|cc|g|gr|grs|gramo|gramos|"
+        r"kg|kgs|kgr|kgrs|kl|kilo|kilos|kilogramo|kilogramos"
+    )
+
+    def reemplazar_mixta(coincidencia):
+        entero = float(coincidencia.group(1))
+        numerador = float(coincidencia.group(2))
+        denominador = float(coincidencia.group(3))
+        unidad = coincidencia.group(4)
+
+        if denominador == 0:
+            return coincidencia.group(0)
+
+        valor = entero + (numerador / denominador)
+        return f"{_formatear_numero_unidad(valor)} {unidad}"
+
+    def reemplazar_simple(coincidencia):
+        numerador = float(coincidencia.group(1))
+        denominador = float(coincidencia.group(2))
+        unidad = coincidencia.group(3)
+
+        if denominador == 0 or numerador >= denominador:
+            return coincidencia.group(0)
+
+        valor = numerador / denominador
+        return f"{_formatear_numero_unidad(valor)} {unidad}"
+
+    texto = re.sub(
+        rf"\b(\d+)\s+(\d+)\s*/\s*(\d+)\s*({unidades})\b",
+        reemplazar_mixta,
+        texto,
+    )
+    return re.sub(
+        rf"(?<!/)\b(\d+)\s*/\s*(\d+)\s*(?:x\s*)?({unidades})\b",
+        reemplazar_simple,
+        texto,
+    )
+
+
 def _normalizar_token_matching(token):
     sinonimos = {
         "azuc": "azucar",
@@ -312,6 +354,9 @@ def _normalizar_token_matching(token):
         "descart": "descartable",
         "un": "unidades",
         "uni": "unidades",
+        "unid": "unidades",
+        "unids": "unidades",
+        "unds": "unidades",
         "unidad": "unidades",
         "u": "unidades",
     }
@@ -322,10 +367,57 @@ def _normalizar_tokens_productos(tokens):
     """Normaliza abreviaturas comerciales antes de comparar o buscar."""
     tokens_normalizados = []
     indice = 0
+    unidades_medida = {
+        "l",
+        "lt",
+        "lts",
+        "lit",
+        "litr",
+        "litro",
+        "litros",
+        "ml",
+        "cc",
+        "g",
+        "gr",
+        "grs",
+        "gramo",
+        "gramos",
+        "kg",
+        "kgs",
+        "kgr",
+        "kgrs",
+        "kl",
+        "kilo",
+        "kilos",
+        "kilogramo",
+        "kilogramos",
+    }
+    unidades_dimension = {
+        "cm",
+        "cms",
+        "cmts",
+        "mm",
+        "m",
+        "mt",
+        "mts",
+        "metro",
+        "metros",
+    }
+    unidades_cantidad = {
+        "un",
+        "uni",
+        "unid",
+        "unids",
+        "unds",
+        "unidad",
+        "unidades",
+        "u",
+    }
 
     while indice < len(tokens):
         token = tokens[indice]
         siguiente = tokens[indice + 1] if indice + 1 < len(tokens) else ""
+        subsiguiente = tokens[indice + 2] if indice + 2 < len(tokens) else ""
 
         if token == "s" and siguiente in {"azuc", "azucar", "azucares"}:
             tokens_normalizados.append("sin")
@@ -354,7 +446,7 @@ def _normalizar_tokens_productos(tokens):
         if token == "pack" and siguiente and _parsear_numero(siguiente) is not None:
             tokens_normalizados.append(siguiente)
             tokens_normalizados.append("unidades")
-            indice += 2
+            indice += 3 if subsiguiente in unidades_cantidad else 2
             continue
 
         if token == "pack":
@@ -362,18 +454,24 @@ def _normalizar_tokens_productos(tokens):
             continue
 
         if token == "x" and siguiente and _parsear_numero(siguiente) is not None:
+            anterior = tokens[indice - 1] if indice > 0 else ""
+            es_dimension = (
+                _parsear_numero(anterior) is not None
+                and (subsiguiente == "x" or subsiguiente in unidades_dimension)
+            )
+            es_medida = subsiguiente in (unidades_medida | unidades_dimension)
+
+            if es_dimension or es_medida:
+                indice += 1
+                continue
+
+        if token == "x" and siguiente and _parsear_numero(siguiente) is not None:
             tokens_normalizados.append(siguiente)
             tokens_normalizados.append("unidades")
-            indice += 2
+            indice += 3 if subsiguiente in unidades_cantidad else 2
             continue
 
-        if _parsear_numero(token) is not None and siguiente in {
-            "un",
-            "uni",
-            "unidad",
-            "unidades",
-            "u",
-        }:
+        if _parsear_numero(token) is not None and siguiente in unidades_cantidad:
             tokens_normalizados.append(token)
             tokens_normalizados.append("unidades")
             indice += 2
@@ -401,8 +499,9 @@ def _extraer_tokens_matching(nombre):
         "botellas",
         "de",
         "del",
+        "descartable",
+        "descartables",
         "el",
-        "envase",
         "gaseosa",
         "la",
         "las",
@@ -447,6 +546,7 @@ def normalizar_nombre_comparable(nombre):
         return ""
 
     texto = _quitar_acentos(nombre_limpio).lower()
+    texto = _normalizar_fracciones_medida(texto)
     texto = re.sub(r"(\d)([a-z])", r"\1 \2", texto)
     texto = re.sub(r"([a-z])(\d)", r"\1 \2", texto)
     texto = re.sub(r"[^a-z0-9,.]+", " ", texto)
@@ -454,10 +554,20 @@ def normalizar_nombre_comparable(nombre):
     tokens = [token for token in tokens if token]
     tokens = _normalizar_tokens_productos(tokens)
 
-    unidades_litro = {"l", "lt", "lts", "litro", "litros"}
+    unidades_litro = {"l", "lt", "lts", "lit", "litr", "litro", "litros"}
     unidades_mililitro = {"ml", "mililitro", "mililitros", "cc"}
     unidades_gramo = {"g", "gr", "grs", "gramo", "gramos"}
-    unidades_kilo = {"kg", "kgs", "kilo", "kilos", "kilogramo", "kilogramos"}
+    unidades_kilo = {
+        "kg",
+        "kgs",
+        "kgr",
+        "kgrs",
+        "kl",
+        "kilo",
+        "kilos",
+        "kilogramo",
+        "kilogramos",
+    }
     unidades_conocidas = (
         unidades_litro | unidades_mililitro | unidades_gramo | unidades_kilo
     )

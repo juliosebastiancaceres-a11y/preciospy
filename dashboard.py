@@ -3501,6 +3501,256 @@ def preparar_resumen_categorias_comparacion(comparacion):
     ]
 
 
+def obtener_supermercado_mayor_precio(fila, columnas_supermercado):
+    """Obtiene el supermercado con mayor precio en una fila de comparacion."""
+    precios_supermercado = {
+        supermercado: fila[supermercado]
+        for supermercado in columnas_supermercado
+        if supermercado in fila and not pd.isna(fila[supermercado])
+    }
+
+    if not precios_supermercado:
+        return "", None
+
+    supermercado = max(precios_supermercado, key=precios_supermercado.get)
+    return supermercado, precios_supermercado[supermercado]
+
+
+def preparar_mejores_compras(
+    comparacion,
+    ahorro_minimo_porcentaje=0,
+    supermercados_minimos=2,
+    limite=None,
+):
+    """Prepara oportunidades accionables a partir de comparaciones."""
+    if comparacion.empty:
+        return pd.DataFrame()
+
+    columnas_supermercado = obtener_columnas_supermercado_comparacion(comparacion)
+    filas = []
+
+    for _, fila in comparacion.iterrows():
+        if fila.get("Supermercados comparados", 0) < supermercados_minimos:
+            continue
+        if fila.get("Ahorro %", 0) < ahorro_minimo_porcentaje:
+            continue
+
+        supermercado_caro, precio_caro = obtener_supermercado_mayor_precio(
+            fila,
+            columnas_supermercado,
+        )
+        mejor_precio = fila.get("Mejor precio")
+
+        filas.append(
+            {
+                "Producto comparable": fila.get("Producto comparable", ""),
+                "Categoría comparable": fila.get("Categoría comparable", ""),
+                "Mejor supermercado": fila.get("Supermercado más barato", ""),
+                "Mejor precio": mejor_precio,
+                "Supermercado más caro": supermercado_caro,
+                "Precio más caro": precio_caro,
+                "Ahorro posible": fila.get("Diferencia", 0),
+                "Ahorro %": fila.get("Ahorro %", 0),
+                "Supermercados comparados": fila.get("Supermercados comparados", 0),
+                "Coincidencia": fila.get("Coincidencia", ""),
+                "Confianza": fila.get("Confianza", ""),
+                "Producto mejor precio": fila.get("Producto mejor precio", ""),
+                "Productos comparados": fila.get("Productos comparados", ""),
+            }
+        )
+
+    if not filas:
+        return pd.DataFrame()
+
+    oportunidades = pd.DataFrame(filas).sort_values(
+        ["Ahorro posible", "Ahorro %", "Producto comparable"],
+        ascending=[False, False, True],
+    )
+
+    if limite:
+        oportunidades = oportunidades.head(limite)
+
+    return oportunidades.reset_index(drop=True)
+
+
+def preparar_resumen_categorias(comparacion):
+    """Resume oportunidades por categoria comparable para decidir rubros."""
+    oportunidades = preparar_mejores_compras(comparacion)
+
+    if oportunidades.empty:
+        return pd.DataFrame()
+
+    ganadores = (
+        oportunidades.groupby(["Categoría comparable", "Mejor supermercado"])
+        .size()
+        .reset_index(name="victorias")
+        .sort_values(
+            ["Categoría comparable", "victorias", "Mejor supermercado"],
+            ascending=[True, False, True],
+        )
+        .drop_duplicates("Categoría comparable")
+        .rename(
+            columns={
+                "Mejor supermercado": "Supermercado más conveniente",
+                "victorias": "Victorias del líder",
+            }
+        )
+    )
+
+    resumen = (
+        oportunidades.groupby("Categoría comparable", dropna=False)
+        .agg(
+            Oportunidades=("Producto comparable", "count"),
+            Ahorro_promedio=("Ahorro posible", "mean"),
+            Ahorro_maximo=("Ahorro posible", "max"),
+            Ahorro_porcentaje_promedio=("Ahorro %", "mean"),
+            Supermercados_promedio=("Supermercados comparados", "mean"),
+        )
+        .reset_index()
+        .merge(ganadores, on="Categoría comparable", how="left")
+        .sort_values(["Oportunidades", "Ahorro_maximo"], ascending=[False, False])
+    )
+
+    return resumen[
+        [
+            "Categoría comparable",
+            "Oportunidades",
+            "Ahorro_promedio",
+            "Ahorro_maximo",
+            "Ahorro_porcentaje_promedio",
+            "Supermercados_promedio",
+            "Supermercado más conveniente",
+            "Victorias del líder",
+        ]
+    ].reset_index(drop=True)
+
+
+def preparar_ranking_supermercados(comparacion):
+    """Rankea supermercados solo dentro de productos comparables."""
+    if comparacion.empty:
+        return pd.DataFrame()
+
+    columnas_supermercado = obtener_columnas_supermercado_comparacion(comparacion)
+    filas = []
+
+    for supermercado in columnas_supermercado:
+        datos_super = comparacion[
+            comparacion[supermercado].notna()
+        ].copy()
+
+        if datos_super.empty:
+            continue
+
+        victorias = (
+            datos_super["Supermercado más barato"].astype(str) == supermercado
+        ).sum()
+        peores = 0
+        ahorro_vs_mejor = 0
+        precio_relativo = []
+
+        for _, fila in datos_super.iterrows():
+            precio_super = fila[supermercado]
+            mejor_precio = fila["Mejor precio"]
+            supermercado_caro, _ = obtener_supermercado_mayor_precio(
+                fila,
+                columnas_supermercado,
+            )
+
+            if supermercado_caro == supermercado:
+                peores += 1
+            if precio_super > mejor_precio:
+                ahorro_vs_mejor += precio_super - mejor_precio
+            if mejor_precio:
+                precio_relativo.append(((precio_super / mejor_precio) - 1) * 100)
+
+        filas.append(
+            {
+                "Supermercado": supermercado,
+                "Productos comparables": len(datos_super),
+                "Mejores precios": int(victorias),
+                "Peores precios": int(peores),
+                "Ahorro vs mejor": ahorro_vs_mejor,
+                "Precio relativo promedio %": (
+                    sum(precio_relativo) / len(precio_relativo)
+                    if precio_relativo
+                    else 0
+                ),
+            }
+        )
+
+    if not filas:
+        return pd.DataFrame()
+
+    ranking = pd.DataFrame(filas)
+    ranking["Tasa de victoria %"] = (
+        ranking["Mejores precios"] / ranking["Productos comparables"] * 100
+    )
+    return ranking.sort_values(
+        ["Mejores precios", "Tasa de victoria %", "Precio relativo promedio %"],
+        ascending=[False, False, True],
+    ).reset_index(drop=True)
+
+
+def preparar_tabla_mejores_compras(oportunidades):
+    """Formatea oportunidades para mostrar o exportar."""
+    if oportunidades.empty:
+        return oportunidades.copy()
+
+    tabla = oportunidades.copy()
+
+    for columna in ["Mejor precio", "Precio más caro", "Ahorro posible"]:
+        if columna in tabla.columns:
+            tabla[columna] = tabla[columna].map(
+                lambda valor: "" if pd.isna(valor) else formatear_guaranies(valor)
+            )
+
+    if "Ahorro %" in tabla.columns:
+        tabla["Ahorro %"] = tabla["Ahorro %"].map(lambda valor: f"{valor:.1f}%")
+
+    return tabla.fillna("")
+
+
+def preparar_tabla_resumen_categorias(resumen):
+    """Formatea resumen de categorias para lectura."""
+    if resumen.empty:
+        return resumen.copy()
+
+    tabla = resumen.copy()
+    for columna in ["Ahorro_promedio", "Ahorro_maximo"]:
+        tabla[columna] = tabla[columna].map(formatear_guaranies)
+
+    tabla["Ahorro_porcentaje_promedio"] = tabla[
+        "Ahorro_porcentaje_promedio"
+    ].map(lambda valor: f"{valor:.1f}%")
+    tabla["Supermercados_promedio"] = tabla["Supermercados_promedio"].map(
+        lambda valor: f"{valor:.1f}"
+    )
+    return tabla.rename(
+        columns={
+            "Ahorro_promedio": "Ahorro promedio",
+            "Ahorro_maximo": "Ahorro máximo",
+            "Ahorro_porcentaje_promedio": "Ahorro promedio %",
+            "Supermercados_promedio": "Supermercados promedio",
+        }
+    ).fillna("")
+
+
+def preparar_tabla_ranking_supermercados(ranking):
+    """Formatea ranking de supermercados para lectura."""
+    if ranking.empty:
+        return ranking.copy()
+
+    tabla = ranking.copy()
+    tabla["Ahorro vs mejor"] = tabla["Ahorro vs mejor"].map(formatear_guaranies)
+    tabla["Precio relativo promedio %"] = tabla[
+        "Precio relativo promedio %"
+    ].map(lambda valor: f"{valor:+.1f}%")
+    tabla["Tasa de victoria %"] = tabla["Tasa de victoria %"].map(
+        lambda valor: f"{valor:.1f}%"
+    )
+    return tabla.fillna("")
+
+
 def preparar_alertas_precios(precios, umbral_porcentaje=5):
     """Detecta cambios relevantes contra el precio anterior disponible."""
     if precios.empty:
@@ -3998,6 +4248,179 @@ def mostrar_comparacion_supermercados(precios):
                 )
                 st.markdown(f"**Productos:** {primera['Productos comparados']}")
                 st.markdown(f"**Categorías:** {primera['Categorías comparadas']}")
+
+
+def mostrar_oportunidades_decision(precios):
+    """Muestra vistas orientadas a decidir donde comprar."""
+    mostrar_encabezado_seccion(
+        "Oportunidades de compra",
+        "Encontrá diferencias claras, rubros convenientes y supermercados que más veces ganan.",
+        "Decisiones",
+    )
+
+    calcular = st.toggle(
+        "Calcular oportunidades con los filtros actuales",
+        value=False,
+        key="calcular_oportunidades_decision",
+        help=(
+            "Usa el matching de productos comparables. Para una respuesta más rápida, "
+            "trabajá con últimos precios o un período corto."
+        ),
+    )
+
+    if not calcular:
+        st.info(
+            "Activá el cálculo para ver mejores compras, resumen por categoría "
+            "y ranking de supermercados con los productos comparables actuales."
+        )
+        return
+
+    with st.spinner("Buscando oportunidades de compra..."):
+        comparacion = preparar_comparacion_supermercados(precios)
+
+    if comparacion.empty:
+        st.info(
+            "No hay productos comparables suficientes con los filtros actuales."
+        )
+        return
+
+    categorias = sorted(
+        categoria
+        for categoria in comparacion["Categoría comparable"].dropna().unique()
+        if str(categoria).strip()
+    )
+    ahorro_maximo_porcentaje = max(int(comparacion["Ahorro %"].max()), 1)
+    supermercados_maximos = max(int(comparacion["Supermercados comparados"].max()), 2)
+
+    with st.container(border=True):
+        st.markdown("#### Afinar oportunidades")
+        columna_busqueda, columna_categoria = st.columns([1.1, 1])
+        texto_busqueda = columna_busqueda.text_input(
+            "Buscar producto",
+            placeholder="Ej. coca 2l, aceite, yerba",
+            key="oportunidades_busqueda",
+        )
+        categorias_seleccionadas = columna_categoria.multiselect(
+            "Categorías",
+            options=categorias,
+            default=categorias,
+            key="oportunidades_categorias",
+        )
+
+        columna_ahorro, columna_supermercados, columna_confianza = st.columns(3)
+        ahorro_minimo = columna_ahorro.slider(
+            "Ahorro mínimo %",
+            min_value=0,
+            max_value=ahorro_maximo_porcentaje,
+            value=min(5, ahorro_maximo_porcentaje),
+            step=1,
+            format="%d%%",
+            key="oportunidades_ahorro_minimo",
+        )
+        supermercados_minimos = columna_supermercados.slider(
+            "Supermercados mínimos",
+            min_value=2,
+            max_value=supermercados_maximos,
+            value=2,
+            step=1,
+            key="oportunidades_supermercados_minimos",
+        )
+        confianzas = columna_confianza.multiselect(
+            "Confianza",
+            options=["Alta", "Media", "Baja"],
+            default=["Alta", "Media"],
+            key="oportunidades_confianza",
+        )
+
+    comparacion_filtrada = filtrar_comparacion_supermercados(
+        comparacion,
+        categorias=categorias_seleccionadas,
+        texto_busqueda=texto_busqueda,
+    )
+
+    if confianzas:
+        comparacion_filtrada = comparacion_filtrada[
+            comparacion_filtrada["Confianza"].isin(confianzas)
+        ]
+
+    oportunidades = preparar_mejores_compras(
+        comparacion_filtrada,
+        ahorro_minimo_porcentaje=ahorro_minimo,
+        supermercados_minimos=supermercados_minimos,
+    )
+
+    if oportunidades.empty:
+        st.info("No hay oportunidades con esos filtros.")
+        return
+
+    resumen_categorias = preparar_resumen_categorias(comparacion_filtrada)
+    ranking = preparar_ranking_supermercados(comparacion_filtrada)
+
+    categoria_lider = (
+        resumen_categorias.iloc[0]["Categoría comparable"]
+        if not resumen_categorias.empty
+        else "Sin datos"
+    )
+    supermercado_lider = (
+        ranking.iloc[0]["Supermercado"] if not ranking.empty else "Sin datos"
+    )
+
+    columnas_metricas = st.columns(4)
+    columnas_metricas[0].metric("Oportunidades", len(oportunidades))
+    columnas_metricas[1].metric(
+        "Mayor ahorro",
+        formatear_guaranies(oportunidades["Ahorro posible"].max()),
+    )
+    columnas_metricas[2].metric("Categoría destacada", categoria_lider)
+    columnas_metricas[3].metric("Más veces conveniente", supermercado_lider)
+
+    productos_destacados = list(oportunidades.head(3)["Producto comparable"])
+    comparacion_destacada = comparacion_filtrada[
+        comparacion_filtrada["Producto comparable"].isin(productos_destacados)
+    ].copy()
+    if not comparacion_destacada.empty:
+        comparacion_destacada["_orden_destacado"] = pd.Categorical(
+            comparacion_destacada["Producto comparable"],
+            categories=productos_destacados,
+            ordered=True,
+        )
+        comparacion_destacada = comparacion_destacada.sort_values("_orden_destacado")
+        mostrar_oportunidades_comparacion(
+            comparacion_destacada.drop(columns=["_orden_destacado"])
+        )
+
+
+    pestanas = st.tabs(["Mejores compras", "Categorías", "Ranking"])
+
+    with pestanas[0]:
+        st.dataframe(
+            preparar_tabla_mejores_compras(oportunidades.head(80)),
+            hide_index=True,
+            width="stretch",
+            height=430,
+        )
+
+    with pestanas[1]:
+        if resumen_categorias.empty:
+            st.info("No hay categorías suficientes para resumir.")
+        else:
+            st.dataframe(
+                preparar_tabla_resumen_categorias(resumen_categorias),
+                hide_index=True,
+                width="stretch",
+                height=360,
+            )
+
+    with pestanas[2]:
+        if ranking.empty:
+            st.info("No hay ranking disponible con estos filtros.")
+        else:
+            st.dataframe(
+                preparar_tabla_ranking_supermercados(ranking),
+                hide_index=True,
+                width="stretch",
+                height=360,
+            )
 
 
 def mostrar_exportaciones(precios):
@@ -4564,6 +4987,7 @@ def mostrar_dashboard():
         "Vista principal",
         [
             "Resumen",
+            "Oportunidades",
             "Comparar",
             "Evolución",
             "Productos",
@@ -4581,6 +5005,8 @@ def mostrar_dashboard():
     if vista == "Resumen":
         mostrar_salud_sistema(precios, fuente)
         mostrar_grafico(precios_actuales_filtrados)
+    elif vista == "Oportunidades":
+        mostrar_oportunidades_decision(precios_actuales_filtrados)
     elif vista == "Comparar":
         mostrar_comparacion_supermercados(precios_actuales_filtrados)
     elif vista == "Evolución":

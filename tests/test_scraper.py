@@ -89,8 +89,49 @@ def test_normalizar_nombre_comparable_unifica_presentaciones_equivalentes():
     assert normalizar_nombre_comparable("Agua mineral 0,5 L") == "agua mineral 500 ml"
     assert normalizar_nombre_comparable("Agua mineral 500 ml") == "agua mineral 500 ml"
     assert (
+        normalizar_nombre_comparable("Envase retornable Coca Cola 1 1/2 LT")
+        == "envase retornable coca cola 1.5 L"
+    )
+    assert normalizar_nombre_comparable("Coca Cola 1/2 L") == "coca cola 500 ml"
+    assert (
+        normalizar_nombre_comparable("Trebol leche entera 1/2 LIT.")
+        == "trebol leche entera 500 ml"
+    )
+    assert (
+        normalizar_nombre_comparable("Arroz Campobelo Tipo II 1/2 KGRS")
+        == "arroz campobelo tipo ii 500 g"
+    )
+    assert (
+        normalizar_nombre_comparable("Fiambre Primavera Guarani 1/2 X KG")
+        == "fiambre primavera guarani 500 g"
+    )
+    assert (
+        normalizar_nombre_comparable("Gaseosa Coca Cola X 4 UNID. 1 1/2 LITR-")
+        == "gaseosa coca cola 4 unidades 1.5 L"
+    )
+    assert (
+        normalizar_nombre_comparable("Envase vacio botellon Seltz X 20 LT")
+        == "envase vacio botellon seltz 20 L"
+    )
+    assert (
+        normalizar_nombre_comparable("Sticker Stitch 17X16CM")
+        == "sticker stitch 17 16 cm"
+    )
+    assert (
+        normalizar_nombre_comparable("Cartuchera 21X14X4CM")
+        == "cartuchera 21 14 4 cm"
+    )
+    assert (
+        normalizar_nombre_comparable("Arcoiris te verde caja 10/2GR")
+        == "arcoiris te verde caja 10 2 g"
+    )
+    assert (
         obtener_clave_matching_producto("Harina 1000 gr")
         == obtener_clave_matching_producto("Harina 1 kg")
+    )
+    assert (
+        obtener_etiqueta_matching_producto("Envase retornable Coca Cola 1 1/2 LT")
+        == "envase retornable coca cola 1.5 L"
     )
     assert obtener_presentacion_matching_producto("Pack Coca Cola x4 1L") == (
         "4 unidades + 1 L"
